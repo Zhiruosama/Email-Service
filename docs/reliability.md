@@ -1,0 +1,262 @@
+# 可靠性、调度与故障语义
+
+## 1. 可靠性目标
+
+系统承诺：
+
+- 已返回 `ACCEPTED` 的任务已持久化；
+- 进程或 RabbitMQ 短时故障后任务可恢复；
+- 内部阶段采用至少一次处理；
+- 相同租户和幂等键不会创建两个逻辑任务；
+- 状态事件可重复但不会倒退；
+- 超过截止时间的邮件不会开始新的发送尝试；
+- 每个失败都进入稳定、可观测的类别。
+
+系统不承诺：
+
+- 外部 Provider 只执行一次；
+- SMTP 超时后能判断对方是否接受；
+- SMTP 接受等于收件人最终收到；
+- 多个外部系统之间存在原子事务。
+
+## 2. 幂等模型
+
+幂等唯一键：
+
+```text
+(tenant_id, idempotency_key)
+```
+
+服务对规范化请求计算带服务端密钥的 payload fingerprint：
+
+```text
+HMAC-SHA256(
+  idempotency_secret,
+  canonical_recipient ||
+  sender_identity ||
+  template_key ||
+  resolved_template_version ||
+  locale ||
+  canonical_variables ||
+  scheduled_at ||
+  dispatch_deadline
+)
+```
+
+重复调用：
+
+- key 与 fingerprint 都相同：返回原任务；
+- key 相同但 fingerprint 不同：拒绝并告警；
+- 调用方 RPC 超时：使用相同 key 查询或重试；
+- 不得因超时生成新 key。
+
+## 3. Transactional Outbox
+
+### 3.1 提交事务
+
+```text
+BEGIN
+  INSERT mail_message
+  INSERT outbox_event(message.accepted)
+COMMIT
+```
+
+API 返回成功前只依赖 PostgreSQL，不同步依赖 RabbitMQ。
+
+### 3.2 发布
+
+Relay 发布时启用：
+
+- durable exchange；
+- persistent message；
+- quorum queue；
+- publisher confirms；
+- `mandatory=true`；
+- 有界 confirm timeout。
+
+数据库标记 `published` 前发生崩溃会导致重复发布，Worker 必须幂等。先标记再发布会
+产生丢失窗口，因此禁止这么做。
+
+### 3.3 消费
+
+Worker：
+
+1. 收到消息；
+2. 校验消息携带的 `dispatch_generation` 与数据库当前代次；
+3. 在数据库中领取对应任务；
+4. 执行一次有界投递尝试；
+5. 事务保存 Attempt、聚合状态和 Notification Outbox；
+6. 提交事务；
+7. ACK RabbitMQ。
+
+状态不匹配或代次过旧的消息直接作为陈旧消息确认，不触发投递。步骤 5 后、步骤 7
+前崩溃会产生重复消费，但不会创建新的逻辑 Attempt。
+
+## 4. 延迟发送
+
+长期定时任务不直接堆在 RabbitMQ：
+
+- `scheduled_at` 是 PostgreSQL 中的权威时间；
+- Scheduler 按时间索引扫描到期任务；
+- 多实例使用 `FOR UPDATE SKIP LOCKED` 领取；
+- 领取和写 Outbox 在同一事务中；
+- Scheduler 每次只领取小批次并设置 lease；
+- 任务取消或租户暂停立即反映在数据库状态；
+- 定期扫描过期 lease 恢复因节点崩溃遗留的任务。
+
+这种方式支持长时间预约、取消、重启恢复和查询。RabbitMQ TTL/DLX 可以用于很短的
+Broker 级退避，但不作为产品级调度真相。
+
+## 5. 重试调度
+
+每个失败先归类：
+
+| 类别 | 示例 | 默认动作 |
+| --- | --- | --- |
+| `VALIDATION` | 地址、模板变量错误 | 永久失败 |
+| `AUTHENTICATION` | SMTP/API 凭据错误 | Provider 熔断、告警，不重试任务 |
+| `RATE_LIMITED` | Provider 429/限速 | 尊重 Retry-After 后重试 |
+| `RECIPIENT_REJECTED` | 明确的无效地址 | 永久失败 |
+| `CONTENT_REJECTED` | 内容/策略拒绝 | 永久失败并告警 |
+| `NETWORK` | DNS、连接失败 | 有界指数退避 |
+| `PROVIDER_UNAVAILABLE` | 5xx、临时服务异常 | 退避或安全切换 |
+| `TIMEOUT_BEFORE_SEND` | 未开始提交即超时 | 可安全重试 |
+| `SUBMISSION_UNKNOWN` | 提交后连接中断 | 进入不确定状态并对账 |
+| `INTERNAL` | 本地未分类错误 | 有界重试并告警 |
+
+退避算法使用 full jitter：
+
+```text
+delay = random(0, min(cap, base * 2^attempt))
+```
+
+最终调度时间还要受以下约束：
+
+```text
+next_attempt_at < dispatch_deadline
+attempt_count < max_attempts
+tenant/provider 未暂停
+```
+
+重试任务写回数据库，由 Scheduler 再次放入 Outbox。
+
+## 6. 熔断、舱壁和降级
+
+### 6.1 熔断粒度
+
+熔断键至少包含：
+
+```text
+provider + endpoint/region + credential_id
+```
+
+不能使用一个全局 SMTP 熔断器，否则一个租户凭据失效会拖垮所有租户。
+
+状态：
+
+```text
+CLOSED → OPEN → HALF_OPEN → CLOSED
+```
+
+- 网络和 Provider 5xx 计入健康统计；
+- 业务地址拒绝不计入 Provider 熔断；
+- 认证失败立即打开对应凭据熔断器；
+- 半开探测使用独立小并发舱壁；
+- 多实例首先允许本地快速熔断，关键状态通过共享存储或控制面广播。
+
+### 6.2 舱壁
+
+至少隔离：
+
+- `CRITICAL` 与其他邮件队列；
+- 不同 Provider 的并发池；
+- 不同租户的并发和速率；
+- Submission API、Worker、Subscriber Worker 的连接池；
+- 回调目标之间的执行池。
+
+### 6.3 降级顺序
+
+1. 降低 `BULK` 和 `NOTIFICATION` 吞吐；
+2. 暂停新的低优先级计划任务出队；
+3. 切换到健康的兼容 Provider；
+4. 保留已受理任务并延后发送；
+5. 容量或数据库无法保证持久化时拒绝新任务；
+6. 永远不返回“成功”来掩盖任务没有落库。
+
+验证码等短截止时间任务在无法及时发送时快速进入失败/过期，使业务方能提示用户
+重试，不能在故障恢复数小时后再发送失效验证码。
+
+## 7. MQ 拓扑
+
+推荐使用 RabbitMQ Quorum Queues：
+
+```text
+mail.dispatch exchange (topic)
+  ├── mail.critical.q
+  ├── mail.transactional.q
+  ├── mail.notification.q
+  └── mail.bulk.q
+
+mail.dead exchange
+  ├── mail.critical.dead.q
+  ├── mail.transactional.dead.q
+  └── ...
+```
+
+要求：
+
+- 队列持久化；
+- Publisher Confirms；
+- Consumer Manual Ack；
+- `mandatory` 发布；
+- 配置 max length/bytes；
+- 配置 delivery limit；
+- Dead Letter 使用可恢复策略；
+- Prefetch 按 Provider 延迟和 Worker 并发调优；
+- 消息体只放任务 ID、租户 ID、事件 ID 和必要路由信息，不复制邮件正文；
+- 消息体携带 `dispatch_generation`，防止延迟到达的旧消息触发新的发送。
+
+RabbitMQ 4.x Quorum Queue 默认存在 delivery limit，必须显式设计 DLQ，防止 poison
+message 被静默丢弃。
+
+## 8. Provider 不确定结果
+
+SMTP 最危险的窗口是服务已提交完整 DATA，但收到最终响应前连接断开。此时：
+
+- Provider 可能已经接受；
+- 再发可能产生重复邮件；
+- 不重试可能丢失邮件。
+
+状态机必须显式包含 `SUBMISSION_UNKNOWN`。处理策略：
+
+- Provider 支持幂等查询：主动查询；
+- Provider 支持幂等发送：同 Provider、同 key 重试；
+- 普通 SMTP：按照消息类别的 duplicate risk policy 决定；
+- 无论选择什么，都记录风险决策，不能伪装成明确成功或明确失败。
+
+## 9. DLQ 和人工重放
+
+进入 DLQ 的任务必须：
+
+- 已在数据库标记 `DEAD_LETTERED`；
+- 保存最后稳定错误类别和脱敏摘要；
+- 触发指标与告警；
+- 可按租户、Provider、时间和错误码查询；
+- 重放时创建新的 Attempt，但保留原 message ID 和审计链；
+- 已过截止时间的验证码禁止重放；
+- payload 已按保留策略清理时禁止重放正文。
+
+## 10. 故障场景检查
+
+| 故障点 | 结果 |
+| --- | --- |
+| API 落库前崩溃 | 调用方同幂等键重试 |
+| API 落库后响应前崩溃 | 返回原任务，不重复创建 |
+| Outbox 发布前崩溃 | Relay 恢复后继续 |
+| Broker Confirm 丢失 | 可能重复发布，Worker 幂等 |
+| Worker 执行前崩溃 | RabbitMQ 重新投递 |
+| Provider 成功后 Worker 崩溃 | 可能成为不确定结果，按 Provider 能力对账 |
+| 状态落库后 ACK 前崩溃 | 重复消费，不重复推进 |
+| 业务回调不可用 | Notification Outbox 重试，不阻塞发信 |
+| RabbitMQ 不可用 | API 可继续有限受理，Outbox 积压并触发容量保护 |
+| PostgreSQL 不可用 | 无法可靠受理，API 返回不可用 |
