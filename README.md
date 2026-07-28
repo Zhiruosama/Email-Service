@@ -22,10 +22,11 @@ AI-Nexus 是第一个接入方，但不是 Mail Service 的架构边界。
 6. [分阶段实施路线](docs/roadmap.md)
 7. [架构决策记录](docs/adr/README.md)
 8. [设计依据](docs/references.md)
+9. [gRPC V1 协议](docs/protocol/README.md)
 
 ## 暂定技术基线
 
-- Go 1.26
+- Go 1.25
 - gRPC + Protobuf
 - PostgreSQL 18
 - RabbitMQ 4.x Quorum Queues
@@ -33,3 +34,22 @@ AI-Nexus 是第一个接入方，但不是 Mail Service 的架构边界。
 - SMTP Provider 和可控 Fake Provider
 
 版本只是当前设计基线，实施时通过依赖锁定和兼容性测试固定具体小版本。
+
+## 本地验证
+
+日常离线检查使用 `protoc`，Go 代码生成插件由 `go.mod` 固定：
+
+```bash
+make check
+```
+
+完整检查会按 Makefile 中固定的 Buf 版本执行 lint：
+
+```bash
+make check-all
+```
+
+`gen/go/` 是生成代码，不得手工修改。
+
+本地 `protoc` 最低版本为 3.21，且需要能够找到标准
+`google/protobuf/*.proto` include 文件。

@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package mailservice.delivery.v1;
+
+import "google/protobuf/timestamp.proto";
+import "mailservice/delivery/v1/common.proto";
+
+option go_package = "github.com/Zhiruosama/Email-Service/gen/go/mailservice/delivery/v1;deliveryv1";
+
+// DeliveryEventReceiverService is implemented by a pre-registered subscriber.
+// Mail Service delivers events with at-least-once semantics.
+service DeliveryEventReceiverService {
+  rpc ReportDeliveryEvent(ReportDeliveryEventRequest) returns (ReportDeliveryEventResponse);
+}
+
+message DeliveryEvent {
+  // Globally unique event delivery idempotency key.
+  string event_id = 1;
+
+  string message_id = 2;
+  string idempotency_key = 3;
+  DeliveryStatus status = 4;
+  google.protobuf.Timestamp occurred_at = 5;
+  google.protobuf.Timestamp observed_at = 6;
+
+  // Monotonically increasing for one message_id.
+  uint64 sequence = 7;
+
+  uint32 attempt_number = 8;
+  optional string provider_key = 9;
+  optional string provider_message_id = 10;
+  FailureInfo failure = 11;
+}
+
+message ReportDeliveryEventRequest {
+  DeliveryEvent event = 1;
+}
+
+enum EventAckDisposition {
+  EVENT_ACK_DISPOSITION_UNSPECIFIED = 0;
+  EVENT_ACK_DISPOSITION_ACCEPTED = 1;
+  EVENT_ACK_DISPOSITION_DUPLICATE = 2;
+  EVENT_ACK_DISPOSITION_IGNORED_STALE = 3;
+}
+
+message ReportDeliveryEventResponse {
+  string event_id = 1;
+  EventAckDisposition disposition = 2;
+}

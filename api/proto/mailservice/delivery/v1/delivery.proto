@@ -1,0 +1,143 @@
+syntax = "proto3";
+
+package mailservice.delivery.v1;
+
+import "google/protobuf/timestamp.proto";
+import "mailservice/delivery/v1/common.proto";
+import "mailservice/delivery/v1/event.proto";
+
+option go_package = "github.com/Zhiruosama/Email-Service/gen/go/mailservice/delivery/v1;deliveryv1";
+
+// DeliveryService reliably accepts and manages templated email tasks.
+service DeliveryService {
+  rpc SubmitEmail(SubmitEmailRequest) returns (SubmitEmailResponse);
+  rpc BatchSubmitEmail(BatchSubmitEmailRequest) returns (BatchSubmitEmailResponse);
+  rpc GetEmail(GetEmailRequest) returns (GetEmailResponse);
+  rpc CancelEmail(CancelEmailRequest) returns (CancelEmailResponse);
+  rpc ListEmailEvents(ListEmailEventsRequest) returns (ListEmailEventsResponse);
+}
+
+message SubmitEmailRequest {
+  // Unique within the authenticated tenant. Clients must reuse it when the RPC
+  // outcome is unknown.
+  string idempotency_key = 1;
+
+  Recipient recipient = 2;
+
+  // References a sender identity registered for the authenticated tenant.
+  string sender_identity_key = 3;
+
+  EmailContent content = 4;
+  EmailCategory category = 5;
+
+  // Range 0..9. Higher values receive preference only inside their category.
+  uint32 priority = 6;
+
+  // Omit for immediate delivery. A past timestamp is treated as immediate.
+  google.protobuf.Timestamp scheduled_at = 7;
+
+  // Required. No new provider attempt may start at or after this timestamp.
+  google.protobuf.Timestamp dispatch_deadline = 8;
+
+  DuplicateRiskPolicy duplicate_risk_policy = 9;
+
+  // Non-sensitive correlation data. Keys and values are size-limited.
+  map<string, string> metadata = 10;
+}
+
+enum SubmitDisposition {
+  SUBMIT_DISPOSITION_UNSPECIFIED = 0;
+  SUBMIT_DISPOSITION_ACCEPTED = 1;
+  SUBMIT_DISPOSITION_DUPLICATE = 2;
+}
+
+message SubmitEmailResponse {
+  SubmitDisposition disposition = 1;
+  EmailMessage message = 2;
+}
+
+message BatchSubmitEmailItem {
+  // Unique only inside this batch request and echoed in the response.
+  string item_id = 1;
+  SubmitEmailRequest email = 2;
+}
+
+message BatchSubmitEmailRequest {
+  // V1 accepts at most 100 items. Every item has its own idempotency key and
+  // becomes an independent logical message.
+  repeated BatchSubmitEmailItem items = 1;
+}
+
+enum BatchItemErrorCode {
+  BATCH_ITEM_ERROR_CODE_UNSPECIFIED = 0;
+  BATCH_ITEM_ERROR_CODE_INVALID_ARGUMENT = 1;
+  BATCH_ITEM_ERROR_CODE_PERMISSION_DENIED = 2;
+  BATCH_ITEM_ERROR_CODE_ALREADY_EXISTS = 3;
+  BATCH_ITEM_ERROR_CODE_RESOURCE_EXHAUSTED = 4;
+  BATCH_ITEM_ERROR_CODE_UNAVAILABLE = 5;
+  BATCH_ITEM_ERROR_CODE_INTERNAL = 6;
+}
+
+message BatchItemError {
+  BatchItemErrorCode code = 1;
+  string message = 2;
+  bool retryable = 3;
+}
+
+message BatchSubmitEmailResult {
+  string item_id = 1;
+
+  oneof outcome {
+    SubmitEmailResponse success = 2;
+    BatchItemError error = 3;
+  }
+}
+
+message BatchSubmitEmailResponse {
+  repeated BatchSubmitEmailResult results = 1;
+}
+
+message GetEmailRequest {
+  oneof selector {
+    string message_id = 1;
+    string idempotency_key = 2;
+  }
+}
+
+message GetEmailResponse {
+  EmailMessage message = 1;
+}
+
+message CancelEmailRequest {
+  string message_id = 1;
+
+  // Stable, non-sensitive caller-defined reason code.
+  optional string reason_code = 2;
+}
+
+enum CancelDisposition {
+  CANCEL_DISPOSITION_UNSPECIFIED = 0;
+  CANCEL_DISPOSITION_CANCELED = 1;
+  CANCEL_DISPOSITION_ALREADY_CANCELED = 2;
+  CANCEL_DISPOSITION_TOO_LATE = 3;
+}
+
+message CancelEmailResponse {
+  CancelDisposition disposition = 1;
+  EmailMessage message = 2;
+}
+
+message ListEmailEventsRequest {
+  string message_id = 1;
+
+  // Range 1..100; omitted or zero uses the server default.
+  uint32 page_size = 2;
+
+  // Opaque token returned by the previous response.
+  string page_token = 3;
+}
+
+message ListEmailEventsResponse {
+  repeated DeliveryEvent events = 1;
+  string next_page_token = 2;
+}

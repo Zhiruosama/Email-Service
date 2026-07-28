@@ -1,0 +1,125 @@
+syntax = "proto3";
+
+package mailservice.delivery.v1;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/Zhiruosama/Email-Service/gen/go/mailservice/delivery/v1;deliveryv1";
+
+// EmailCategory selects isolation, capacity, and default retry policies.
+enum EmailCategory {
+  EMAIL_CATEGORY_UNSPECIFIED = 0;
+  EMAIL_CATEGORY_CRITICAL = 1;
+  EMAIL_CATEGORY_TRANSACTIONAL = 2;
+  EMAIL_CATEGORY_NOTIFICATION = 3;
+  EMAIL_CATEGORY_BULK = 4;
+}
+
+// DuplicateRiskPolicy controls ambiguous provider submission outcomes.
+enum DuplicateRiskPolicy {
+  DUPLICATE_RISK_POLICY_UNSPECIFIED = 0;
+
+  // Prefer avoiding duplicate messages when provider acceptance is unknown.
+  DUPLICATE_RISK_POLICY_AVOID_DUPLICATE = 1;
+
+  // Prefer another attempt when provider acceptance is unknown.
+  DUPLICATE_RISK_POLICY_PREFER_DELIVERY = 2;
+}
+
+// DeliveryStatus is the normalized lifecycle of one logical email.
+enum DeliveryStatus {
+  DELIVERY_STATUS_UNSPECIFIED = 0;
+  DELIVERY_STATUS_ACCEPTED = 1;
+  DELIVERY_STATUS_SCHEDULED = 2;
+  DELIVERY_STATUS_QUEUED = 3;
+  DELIVERY_STATUS_SENDING = 4;
+  DELIVERY_STATUS_RETRY_SCHEDULED = 5;
+  DELIVERY_STATUS_SUBMISSION_UNKNOWN = 6;
+  DELIVERY_STATUS_PROVIDER_ACCEPTED = 7;
+  DELIVERY_STATUS_DELIVERED = 8;
+  DELIVERY_STATUS_BOUNCED = 9;
+  DELIVERY_STATUS_COMPLAINED = 10;
+  DELIVERY_STATUS_CANCELED = 11;
+  DELIVERY_STATUS_EXPIRED = 12;
+  DELIVERY_STATUS_PERMANENTLY_FAILED = 13;
+  DELIVERY_STATUS_DEAD_LETTERED = 14;
+  DELIVERY_STATUS_UNKNOWN_FINAL = 15;
+}
+
+// FailureCategory is stable across SMTP and API-based providers.
+enum FailureCategory {
+  FAILURE_CATEGORY_UNSPECIFIED = 0;
+  FAILURE_CATEGORY_VALIDATION = 1;
+  FAILURE_CATEGORY_AUTHENTICATION = 2;
+  FAILURE_CATEGORY_RATE_LIMITED = 3;
+  FAILURE_CATEGORY_RECIPIENT_REJECTED = 4;
+  FAILURE_CATEGORY_CONTENT_REJECTED = 5;
+  FAILURE_CATEGORY_PROVIDER_UNAVAILABLE = 6;
+  FAILURE_CATEGORY_NETWORK = 7;
+  FAILURE_CATEGORY_TIMEOUT_BEFORE_SEND = 8;
+  FAILURE_CATEGORY_SUBMISSION_UNKNOWN = 9;
+  FAILURE_CATEGORY_INTERNAL = 10;
+}
+
+// FailureInfo contains only sanitized, non-sensitive diagnostics.
+message FailureInfo {
+  FailureCategory category = 1;
+
+  // Stable machine-readable code. It must not contain provider responses.
+  string code = 2;
+
+  // Sanitized operator-facing summary without addresses, content, or credentials.
+  string message = 3;
+
+  bool retryable = 4;
+}
+
+message Recipient {
+  string email = 1;
+  optional string display_name = 2;
+}
+
+message RecipientSummary {
+  // A masked value intended for authorized status views, not the original address.
+  string masked_email = 1;
+}
+
+message TemplateReference {
+  string key = 1;
+
+  // Omit to resolve the active version at acceptance time. Responses always
+  // contain the resolved immutable version.
+  optional uint32 version = 2;
+}
+
+message EmailContent {
+  TemplateReference template = 1;
+
+  // BCP 47 language tag, for example "zh-CN".
+  string locale = 2;
+
+  // Sensitive values are allowed but must conform to the published template
+  // schema. This object must never be written to logs, errors, or traces.
+  google.protobuf.Struct variables = 3;
+}
+
+// EmailMessage is a safe status view and never contains rendered content or
+// original template variables.
+message EmailMessage {
+  string message_id = 1;
+  string idempotency_key = 2;
+  RecipientSummary recipient = 3;
+  string sender_identity_key = 4;
+  TemplateReference template = 5;
+  string locale = 6;
+  EmailCategory category = 7;
+  uint32 priority = 8;
+  DeliveryStatus status = 9;
+  google.protobuf.Timestamp scheduled_at = 10;
+  google.protobuf.Timestamp dispatch_deadline = 11;
+  google.protobuf.Timestamp accepted_at = 12;
+  google.protobuf.Timestamp updated_at = 13;
+  uint64 latest_sequence = 14;
+  FailureInfo latest_failure = 15;
+}
