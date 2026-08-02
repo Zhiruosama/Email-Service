@@ -47,10 +47,17 @@ PROVIDER_ACCEPTED
   ├── Webhook ─────────────→ DELIVERED
   ├── 退信 ────────────────→ BOUNCED
   └── 投诉 ────────────────→ COMPLAINED
+
+DELIVERED
+  └── 后续投诉 ────────────→ COMPLAINED
 ```
 
 终态和可追加观测事件需要区分。例如 `PROVIDER_ACCEPTED` 后收到 `BOUNCED` 是更晚
 的事实，不应被禁止；但旧的 `QUEUED` 事件绝不能覆盖它。
+
+Provider 回调可能丢失中间事件。状态机允许有可信证据的向前跳转，例如
+`SUBMISSION_UNKNOWN → DELIVERED`，但不会反向补写未知的 `provider_accepted_at`。
+迟到的 `PROVIDER_ACCEPTED` 只进入必要审计，不得让 `DELIVERED` 状态倒退。
 
 ## 3. 核心表
 

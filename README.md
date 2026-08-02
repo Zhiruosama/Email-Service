@@ -10,7 +10,8 @@ AI-Nexus 是第一个接入方，但不是 Mail Service 的架构边界。
 
 ## 当前阶段
 
-项目处于架构设计阶段，尚未开始业务实现。
+项目已完成架构基线、通用 gRPC V1 契约以及领域模型与邮件状态机，下一阶段为
+PostgreSQL Migration 与 Repository。
 
 ## 设计文档
 
@@ -23,6 +24,7 @@ AI-Nexus 是第一个接入方，但不是 Mail Service 的架构边界。
 7. [架构决策记录](docs/adr/README.md)
 8. [设计依据](docs/references.md)
 9. [gRPC V1 协议](docs/protocol/README.md)
+10. [秋招讲解档案](docs/interview/README.md)
 
 ## 暂定技术基线
 
