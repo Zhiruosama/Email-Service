@@ -237,6 +237,15 @@ Outbox 使用
 唯一约束。`event_type` 不可省略，因为一次状态推进产生的状态事件和 dispatch command
 可以共享 aggregate sequence。
 
+payload 是有版本的安全 JSON envelope，只允许 Message ID、租户 ID、状态、sequence、
+dispatch generation、attempt number 和脱敏失败分类等必要字段。收件地址、验证码、正文、
+模板变量和 Provider 凭据不得复制到 Outbox。应用层限制 payload 必须为 JSON object 且不
+超过 64 KiB，数据库继续使用 `jsonb_typeof(payload) = 'object'` 兜底。
+
+重复 identity 通过 `INSERT ... ON CONFLICT DO NOTHING` 处理，再使用 PostgreSQL JSONB
+相等比较已有 payload：语义相同是幂等成功，内容不同返回一致性冲突。这样既避免唯一
+异常让事务进入 aborted 状态，也不会用“幂等”掩盖同一领域事实产生两个不同 payload。
+
 ### 3.8 `notification_deliveries`
 
 一条领域事件面向每个订阅目标生成一条交付记录：

@@ -66,3 +66,45 @@ func TestNewMessageRepositoryRejectsNilDBTX(t *testing.T) {
 	}()
 	NewMessageRepository(nil)
 }
+
+func TestOutboxRepositoryHidesDriverErrorFromUnwrapChain(t *testing.T) {
+	driverError := &pgconn.PgError{Code: "08006", Message: "connection failure"}
+	repository := NewOutboxRepository(stubDBTX{row: errorRow{err: driverError}})
+	event := ports.OutboxEvent{
+		ID:                "60000000-0000-4000-8000-000000000001",
+		AggregateType:     ports.OutboxAggregateMailMessage,
+		AggregateID:       "50000000-0000-4000-8000-000000000001",
+		EventType:         "TEST_EVENT",
+		AggregateSequence: 1,
+		Payload:           []byte(`{"schema_version":1}`),
+	}
+
+	err := repository.Append(context.Background(), []ports.OutboxEvent{event})
+	if !errors.Is(err, ports.ErrOutboxRepository) {
+		t.Fatalf("Append() error = %v, want ErrOutboxRepository", err)
+	}
+	var leaked *pgconn.PgError
+	if errors.As(err, &leaked) {
+		t.Fatal("driver error leaked through errors.Unwrap")
+	}
+}
+
+func TestConstructorsRejectNilDependencies(t *testing.T) {
+	t.Run("outbox repository", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("NewOutboxRepository(nil) did not panic")
+			}
+		}()
+		NewOutboxRepository(nil)
+	})
+
+	t.Run("transaction manager", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("NewTransactionManager(nil) did not panic")
+			}
+		}()
+		NewTransactionManager(nil)
+	})
+}

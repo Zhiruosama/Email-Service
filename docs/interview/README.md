@@ -18,7 +18,7 @@ Mail Service 从零到可上线的每一个开发阶段。
 | 02 | 通用 gRPC V1 契约与工程骨架 | 已完成 | [gRPC 契约](02-grpc-contract.md) |
 | 03 | 领域模型与邮件状态机 | 已完成 | [领域状态机](03-domain-state-machine.md) |
 | 04 | PostgreSQL Migration 与 Repository | 已完成 | [PostgreSQL 基础](04-postgresql-foundation.md) / [Repository 与乐观锁](04b-postgresql-repository.md) |
-| 05 | 幂等 SubmitEmail 与 Transactional Outbox | 未开始 | 完成后新增 |
+| 05 | Transactional Outbox 原子持久化 | 已完成 | [Transactional Outbox](05-transactional-outbox.md) |
 | 06 | Scheduler 与 Outbox Relay | 未开始 | 完成后新增 |
 | 07 | RabbitMQ Worker 与 Fake Provider | 未开始 | 完成后新增 |
 | 08 | 状态通知与 AI-Nexus 联调 | 未开始 | 完成后新增 |
@@ -33,7 +33,8 @@ Mail Service 从零到可上线的每一个开发阶段。
 4. [领域模型与邮件状态机](03-domain-state-machine.md)
 5. [PostgreSQL 基础与 Migration](04-postgresql-foundation.md)
 6. [PostgreSQL Repository 与乐观锁](04b-postgresql-repository.md)
-7. [核心术语速查](glossary.md)
+7. [Transactional Outbox 原子持久化](05-transactional-outbox.md)
+8. [核心术语速查](glossary.md)
 
 ## 每阶段固定记录结构
 

@@ -81,7 +81,7 @@ func (r *MessageRepository) Create(
 	if errors.As(err, &pgError) && pgError.ConstraintName == "mail_messages_pkey" {
 		return ports.CreateMessageResult{}, ports.ErrMessageIDConflict
 	}
-	return ports.CreateMessageResult{}, mapRepositoryError(ctx, "create message", err)
+	return ports.CreateMessageResult{}, mapStorageError(ctx, ports.ErrMessageRepository, "create message", err)
 }
 
 func (r *MessageRepository) GetByID(
@@ -125,7 +125,7 @@ func (r *MessageRepository) get(
 	if errors.As(err, &corrupt) {
 		return ports.MessageRecord{}, err
 	}
-	return ports.MessageRecord{}, mapRepositoryError(ctx, "read message", err)
+	return ports.MessageRecord{}, mapStorageError(ctx, ports.ErrMessageRepository, "read message", err)
 }
 
 func (r *MessageRepository) Save(
@@ -148,7 +148,7 @@ func (r *MessageRepository) Save(
 		if errors.Is(err, pgx.ErrNoRows) {
 			return 0, ports.ErrConcurrentUpdate
 		}
-		return 0, mapRepositoryError(ctx, "save message", err)
+		return 0, mapStorageError(ctx, ports.ErrMessageRepository, "save message", err)
 	}
 	if persistedVersion < 0 {
 		return 0, corruptRecordError("negative version returned after save", nil)
@@ -161,21 +161,22 @@ func (r *MessageRepository) Save(
 }
 
 type repositoryError struct {
+	kind      error
 	operation string
 	cause     error
 }
 
 func (e *repositoryError) Error() string {
-	return fmt.Sprintf("%s: %s", ports.ErrMessageRepository, e.operation)
+	return fmt.Sprintf("%s: %s", e.kind, e.operation)
 }
 
-func (e *repositoryError) Unwrap() error { return ports.ErrMessageRepository }
+func (e *repositoryError) Unwrap() error { return e.kind }
 
 // Cause is available to internal observability code without exposing the
 // driver error through errors.Unwrap or a public API response.
 func (e *repositoryError) Cause() error { return e.cause }
 
-func mapRepositoryError(ctx context.Context, operation string, cause error) error {
+func mapStorageError(ctx context.Context, kind error, operation string, cause error) error {
 	if cause == nil {
 		return nil
 	}
@@ -185,7 +186,7 @@ func mapRepositoryError(ctx context.Context, operation string, cause error) erro
 	if errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded) {
 		return cause
 	}
-	return &repositoryError{operation: operation, cause: cause}
+	return &repositoryError{kind: kind, operation: operation, cause: cause}
 }
 
 type corruptMessageRecordError struct {

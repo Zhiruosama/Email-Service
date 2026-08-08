@@ -56,12 +56,24 @@ HMAC-SHA256(
 
 ```text
 BEGIN
-  INSERT mail_message
-  INSERT outbox_event(message.accepted)
+  INSERT/UPDATE mail_message
+  INSERT all pending domain events into outbox_events
 COMMIT
 ```
 
 API 返回成功前只依赖 PostgreSQL，不同步依赖 RabbitMQ。
+
+当前领域事件包括 `MESSAGE_ACCEPTED`、`MESSAGE_STATUS_CHANGED` 和
+`MESSAGE_DISPATCH_REQUESTED`。立即邮件会在受理事务中写入派发事件；定时邮件只持久化
+受理与状态事件，到期后由 Scheduler 推进为 `QUEUED` 并创建派发事件。
+
+Outbox payload 采用有版本的字段白名单，只保存租户、Message ID、状态变化、sequence、
+dispatch generation 和脱敏失败分类等路由或审计信息。不得复制收件邮箱、验证码、正文、
+模板变量或 Provider 凭据。事件 identity 重复时必须比较 JSONB：语义相同视为幂等重试，
+内容不同视为一致性冲突。
+
+领域 pending events 只在事务 Commit 后清理。Message 保存、Outbox 写入、Commit 任一步
+失败，都必须回滚数据库并保留请求级事件。
 
 ### 3.2 发布
 

@@ -20,6 +20,12 @@ Message ID、事件类型和 dispatch generation 等必要信息。
 在同一个数据库事务中写入 Message 和 Outbox，解决“数据库成功但 MQ 没发布”的双写
 不一致。Relay 后续发布可能重复，因此仍需幂等消费者。
 
+## Transactor 与 Unit of Work
+
+Transactor 负责 Begin、Commit、Rollback；Unit of Work 暴露绑定到同一事务的多个
+Repository。本项目用它们让应用层表达“Message + Outbox 必须原子提交”，同时不直接
+依赖 pgx。
+
 ## Scheduler
 
 Mail Service 内部的后台角色，扫描已到 `scheduled_at` 或 `next_attempt_at` 的 Message，
