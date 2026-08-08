@@ -12,7 +12,8 @@ AI-Nexus 是第一个接入方，但不是 Mail Service 的架构边界。
 
 项目已完成架构基线、通用 gRPC V1 契约、领域状态机、PostgreSQL 18 Migration、
 Repository 与 version 乐观锁、Message + Transactional Outbox 原子持久化，以及数据库
-Scheduler。下一阶段为 Outbox Relay 的 lease 领取与发布边界。
+Scheduler、Outbox Relay 的 Lease/Fencing 和 Fake Publisher。下一阶段为 RabbitMQ
+Publisher Adapter。
 
 ## 设计文档
 

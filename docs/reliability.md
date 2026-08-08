@@ -77,6 +77,18 @@ dispatch generation 和脱敏失败分类等路由或审计信息。不得复制
 
 ### 3.2 发布
 
+Relay 分三段执行：
+
+```text
+短事务领取 PENDING Outbox 并设置唯一 claim token + lease_until
+→ 事务外调用 Publisher 并等待有界 Confirm
+→ 短事务按 event ID + claim token + expected attempt 记录结果
+```
+
+领取使用 `transaction_timestamp()`、有界 batch 和 `FOR UPDATE SKIP LOCKED`。没有 Lease
+或 Lease 已过期的到期事件才能领取。唯一 claim token 同时承担 fencing：事件被重新领取
+后，旧 Publisher 的迟到结果影响 0 行并记为 LeaseLost。
+
 Relay 发布时启用：
 
 - durable exchange；
@@ -88,6 +100,10 @@ Relay 发布时启用：
 
 数据库标记 `published` 前发生崩溃会导致重复发布，Worker 必须幂等。先标记再发布会
 产生丢失窗口，因此禁止这么做。
+
+临时失败清空 Lease 并用 Full Jitter 更新 `available_at`；永久失败或达到最大结果次数后
+进入 `DEAD_LETTERED`。`attempt_count` 在成功、重调度或死信结果落库时增加，不在 Claim
+时增加，因此它不是不可观测窗口内精确的物理 Publish 次数。
 
 ### 3.3 消费
 

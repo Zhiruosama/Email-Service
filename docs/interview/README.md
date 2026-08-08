@@ -20,7 +20,8 @@ Mail Service 从零到可上线的每一个开发阶段。
 | 04 | PostgreSQL Migration 与 Repository | 已完成 | [PostgreSQL 基础](04-postgresql-foundation.md) / [Repository 与乐观锁](04b-postgresql-repository.md) |
 | 05 | Transactional Outbox 原子持久化 | 已完成 | [Transactional Outbox](05-transactional-outbox.md) |
 | 06-A | 数据库 Scheduler | 已完成 | [数据库 Scheduler](06a-database-scheduler.md) |
-| 06-B | Outbox Relay | 未开始 | 完成后新增 |
+| 06-B | Outbox Relay 与 Lease Fencing | 已完成 | [Outbox Relay](06b-outbox-relay.md) |
+| 06-C | RabbitMQ Publisher Adapter | 未开始 | 完成后新增 |
 | 07 | RabbitMQ Worker 与 Fake Provider | 未开始 | 完成后新增 |
 | 08 | 状态通知与 AI-Nexus 联调 | 未开始 | 完成后新增 |
 | 09 | SMTP Provider、重试与熔断 | 未开始 | 完成后新增 |
@@ -36,7 +37,8 @@ Mail Service 从零到可上线的每一个开发阶段。
 6. [PostgreSQL Repository 与乐观锁](04b-postgresql-repository.md)
 7. [Transactional Outbox 原子持久化](05-transactional-outbox.md)
 8. [数据库 Scheduler](06a-database-scheduler.md)
-9. [核心术语速查](glossary.md)
+9. [Outbox Relay 与 Lease Fencing](06b-outbox-relay.md)
+10. [核心术语速查](glossary.md)
 
 ## 每阶段固定记录结构
 

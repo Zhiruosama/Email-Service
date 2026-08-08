@@ -72,6 +72,7 @@ type UnitOfWork interface {
 	Messages() MessageRepository
 	Outbox() OutboxRepository
 	DueMessages() DueMessageRepository
+	OutboxDeliveries() OutboxDeliveryRepository
 }
 
 type TransactionFunc func(UnitOfWork) error

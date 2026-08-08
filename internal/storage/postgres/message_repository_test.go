@@ -116,4 +116,13 @@ func TestConstructorsRejectNilDependencies(t *testing.T) {
 		}()
 		NewDueMessageRepository(nil)
 	})
+
+	t.Run("outbox delivery repository", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("NewOutboxDeliveryRepository(nil) did not panic")
+			}
+		}()
+		NewOutboxDeliveryRepository(nil)
+	})
 }

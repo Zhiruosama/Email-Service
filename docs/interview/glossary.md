@@ -35,7 +35,7 @@ Mail Service 内部的后台角色，扫描已到 `scheduled_at` 或 `next_attem
 ## Outbox Relay
 
 领取 PENDING Outbox，发布 RabbitMQ，等待 Publisher Confirm，再记录发布结果的后台
-角色。
+角色。它使用短事务设置 Lease，网络调用不持有数据库事务。
 
 ## Worker
 
@@ -52,6 +52,11 @@ Provider 的执行角色。
 事务提交后有期限的处理权，例如 `lease_owner + lease_until`。处理者崩溃后，其他实例
 可以在 Lease 过期后恢复任务。它适合 Outbox Relay 这类跨网络工作；Scheduler 的状态
 推进在一个短事务内完成，由 PostgreSQL 回滚和行锁恢复，不额外设置 Lease。
+
+## Fencing Token
+
+每次领取生成的唯一所有权 token。Outbox 结果更新必须匹配当前 token；Lease 过期并被
+重新领取后，旧 Publisher 即使晚返回也只能得到 LeaseLost，不能覆盖新 owner 的状态。
 
 ## Publisher Confirm
 

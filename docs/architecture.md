@@ -97,9 +97,13 @@ mail-service --role=all
 ### 3.3 Outbox Relay
 
 - 分批领取未发布 Outbox；
+- 使用 `FOR UPDATE SKIP LOCKED` 原子设置有期限 Lease；
+- 每批使用唯一 claim token，所有结果更新都通过 token 和 expected attempt fencing；
+- Publisher 网络调用发生在领取事务提交后；
 - 以 RabbitMQ publisher confirms 确认 Broker 已承担消息；
 - 使用 `mandatory` 发布并处理不可路由消息；
 - Confirm 丢失时允许重复发布；
+- 临时失败通过 Full Jitter 更新 `available_at`，永久失败进入死信；
 - Relay 不删除业务任务，仅更新 Outbox 投递进度。
 
 ### 3.4 Delivery Worker

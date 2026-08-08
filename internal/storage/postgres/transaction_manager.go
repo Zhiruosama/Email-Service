@@ -57,9 +57,10 @@ func (m *TransactionManager) WithinTransaction(
 	}()
 
 	unit := &postgresUnitOfWork{
-		messages:    NewMessageRepository(tx),
-		outbox:      NewOutboxRepository(tx),
-		dueMessages: NewDueMessageRepository(tx),
+		messages:         NewMessageRepository(tx),
+		outbox:           NewOutboxRepository(tx),
+		dueMessages:      NewDueMessageRepository(tx),
+		outboxDeliveries: NewOutboxDeliveryRepository(tx),
 	}
 	if err := callback(unit); err != nil {
 		return err
@@ -81,9 +82,10 @@ func rollbackTransaction(tx pgx.Tx) error {
 }
 
 type postgresUnitOfWork struct {
-	messages    ports.MessageRepository
-	outbox      ports.OutboxRepository
-	dueMessages ports.DueMessageRepository
+	messages         ports.MessageRepository
+	outbox           ports.OutboxRepository
+	dueMessages      ports.DueMessageRepository
+	outboxDeliveries ports.OutboxDeliveryRepository
 }
 
 func (u *postgresUnitOfWork) Messages() ports.MessageRepository { return u.messages }
@@ -91,3 +93,7 @@ func (u *postgresUnitOfWork) Messages() ports.MessageRepository { return u.messa
 func (u *postgresUnitOfWork) Outbox() ports.OutboxRepository { return u.outbox }
 
 func (u *postgresUnitOfWork) DueMessages() ports.DueMessageRepository { return u.dueMessages }
+
+func (u *postgresUnitOfWork) OutboxDeliveries() ports.OutboxDeliveryRepository {
+	return u.outboxDeliveries
+}

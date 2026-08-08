@@ -246,6 +246,14 @@ dispatch generation、attempt number 和脱敏失败分类等必要字段。收�
 相等比较已有 payload：语义相同是幂等成功，内容不同返回一致性冲突。这样既避免唯一
 异常让事务进入 aborted 状态，也不会用“幂等”掩盖同一领域事实产生两个不同 payload。
 
+Relay 使用 `lease_owner + lease_until` 跨数据库事务表示临时发布权。`lease_owner` 实际
+保存 `instance_id/claim_uuid`，每次批量领取都生成新 token；发布结果必须同时匹配事件 ID、
+token 和 expected attempt，防止旧 Publisher 的迟到结果覆盖重新领取者。
+
+`attempt_count` 在 Publisher 结果成功落库、重调度或死信时更新，不在 Claim 时更新。
+因此 Relay 在 Publish 前崩溃不会消耗重试额度；相应地，Confirm 后、结果落库前崩溃所
+产生的物理发布无法精确计入该字段，系统仍然采用 At Least Once。
+
 ### 3.8 `notification_deliveries`
 
 一条领域事件面向每个订阅目标生成一条交付记录：
