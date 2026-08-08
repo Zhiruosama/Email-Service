@@ -90,7 +90,9 @@ mail-service --role=all
 - 使用 `FOR UPDATE SKIP LOCKED` 并行领取；
 - 原子推进状态并写入 Outbox；
 - 支持取消、截止时间和租户暂停；
-- 使用数据库时间，避免节点时钟差参与业务判断。
+- 使用同一事务的 `transaction_timestamp()` 领取和执行状态机，避免节点时钟差参与业务
+  判断；
+- 所有工作都在有界短事务内完成，不为 Message 设置跨事务 lease。
 
 ### 3.3 Outbox Relay
 

@@ -107,4 +107,13 @@ func TestConstructorsRejectNilDependencies(t *testing.T) {
 		}()
 		NewTransactionManager(nil)
 	})
+
+	t.Run("due message repository", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("NewDueMessageRepository(nil) did not panic")
+			}
+		}()
+		NewDueMessageRepository(nil)
+	})
 }

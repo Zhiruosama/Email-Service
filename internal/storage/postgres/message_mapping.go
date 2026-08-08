@@ -7,7 +7,6 @@ import (
 
 	"github.com/Zhiruosama/Email-Service/internal/application/ports"
 	"github.com/Zhiruosama/Email-Service/internal/domain/message"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -121,7 +120,11 @@ func nullableString(value string) any {
 	return value
 }
 
-func scanMessageRecord(row pgx.Row) (ports.MessageRecord, error) {
+type rowScanner interface {
+	Scan(...any) error
+}
+
+func scanMessageRecord(row rowScanner, trailingDestinations ...any) (ports.MessageRecord, error) {
 	var (
 		messageID           string
 		tenantID            string
@@ -148,7 +151,7 @@ func scanMessageRecord(row pgx.Row) (ports.MessageRecord, error) {
 		updatedAt           time.Time
 	)
 
-	if err := row.Scan(
+	destinations := []any{
 		&messageID,
 		&tenantID,
 		&idempotencyKey,
@@ -172,7 +175,9 @@ func scanMessageRecord(row pgx.Row) (ports.MessageRecord, error) {
 		&lastErrorRetryable,
 		&acceptedAt,
 		&updatedAt,
-	); err != nil {
+	}
+	destinations = append(destinations, trailingDestinations...)
+	if err := row.Scan(destinations...); err != nil {
 		return ports.MessageRecord{}, err
 	}
 

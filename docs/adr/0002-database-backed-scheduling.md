@@ -18,7 +18,9 @@ Scheduler 领取到期任务并通过 Transactional Outbox 发布到 RabbitMQ。
 
 ## 后果
 
-- 需要高效时间索引、批量领取和 lease 恢复；
+- 需要高效时间索引和有界批量领取；
+- Scheduler 只做短事务状态推进，崩溃由事务回滚恢复，不为 Message 设置 lease；
+- Outbox Relay 跨事务等待 Broker Confirm，需要独立的 lease 恢复；
 - Scheduler 延迟成为必须监控的 SLI；
 - RabbitMQ 可以短时不可用，Outbox 会积压；
 - 数据库容量规划必须包含未来计划任务。

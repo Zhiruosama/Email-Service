@@ -29,7 +29,8 @@ Repository。本项目用它们让应用层表达“Message + Outbox 必须原�
 ## Scheduler
 
 Mail Service 内部的后台角色，扫描已到 `scheduled_at` 或 `next_attempt_at` 的 Message，
-在数据库事务中推进状态并创建 Outbox。它不直接发送邮件，也不直接发布 RabbitMQ。
+使用数据库事务时间推进状态并创建 Outbox。它不直接发送邮件，也不直接发布 RabbitMQ，
+因此只需要短事务行锁，不需要 Message Lease。
 
 ## Outbox Relay
 
@@ -49,7 +50,8 @@ Provider 的执行角色。
 ## Lease
 
 事务提交后有期限的处理权，例如 `lease_owner + lease_until`。处理者崩溃后，其他实例
-可以在 Lease 过期后恢复任务。
+可以在 Lease 过期后恢复任务。它适合 Outbox Relay 这类跨网络工作；Scheduler 的状态
+推进在一个短事务内完成，由 PostgreSQL 回滚和行锁恢复，不额外设置 Lease。
 
 ## Publisher Confirm
 

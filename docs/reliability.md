@@ -108,13 +108,16 @@ Worker：
 
 长期定时任务不直接堆在 RabbitMQ：
 
-- `scheduled_at` 是 PostgreSQL 中的权威时间；
+- `scheduled_at`、`next_attempt_at` 和 `dispatch_deadline` 保存在 PostgreSQL，领取判断
+  使用同一事务的 `transaction_timestamp()`；
 - Scheduler 按时间索引扫描到期任务；
 - 多实例使用 `FOR UPDATE SKIP LOCKED` 领取；
 - 领取和写 Outbox 在同一事务中；
-- Scheduler 每次只领取小批次并设置 lease；
+- Scheduler 每次只在一个短事务中领取有界小批次；
 - 任务取消或租户暂停立即反映在数据库状态；
-- 定期扫描过期 lease 恢复因节点崩溃遗留的任务。
+- Commit 前崩溃由 PostgreSQL 回滚并释放行锁，下一轮扫描自动恢复；
+- Scheduler 不执行事务外工作，因此 Message 不设置 lease；Outbox Relay 跨网络发布时才
+  使用可过期 lease。
 
 这种方式支持长时间预约、取消、重启恢复和查询。RabbitMQ TTL/DLX 可以用于很短的
 Broker 级退避，但不作为产品级调度真相。
