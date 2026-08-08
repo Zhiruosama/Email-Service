@@ -1,0 +1,21 @@
+name: email-service
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:18.4-alpine}
+    environment:
+      POSTGRES_DB: email_service
+      POSTGRES_USER: email_service
+      POSTGRES_PASSWORD: email_service_dev
+    ports:
+      - "${MAIL_POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U email_service -d email_service"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - email-service-postgres-data:/var/lib/postgresql
+
+volumes:
+  email-service-postgres-data:

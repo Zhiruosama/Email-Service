@@ -10,8 +10,8 @@ AI-Nexus 是第一个接入方，但不是 Mail Service 的架构边界。
 
 ## 当前阶段
 
-项目已完成架构基线、通用 gRPC V1 契约以及领域模型与邮件状态机，下一阶段为
-PostgreSQL Migration 与 Repository。
+项目已完成架构基线、通用 gRPC V1 契约、领域状态机和 PostgreSQL 18 Migration
+基础，下一阶段为 Repository、乐观锁与 Transactional Outbox。
 
 ## 设计文档
 
@@ -55,3 +55,30 @@ make check-all
 
 本地 `protoc` 最低版本为 3.21，且需要能够找到标准
 `google/protobuf/*.proto` include 文件。
+
+## 本地 PostgreSQL
+
+本地开发数据库使用固定的 PostgreSQL 18.4 镜像：
+
+```bash
+cp .env.example .env
+make db-up
+make migrate-up
+make migrate-status
+```
+
+停止容器但保留数据卷：
+
+```bash
+make db-down
+```
+
+Migration 文件校验和真实数据库集成测试：
+
+```bash
+make migrate-validate
+make test-integration
+```
+
+普通 `go test ./...` 不依赖 Docker；只有 integration build tag 会启动一次性 PostgreSQL
+容器。

@@ -120,6 +120,7 @@ idempotency_key varchar
 payload_fingerprint bytea
 category varchar
 priority smallint
+duplicate_risk_policy varchar
 recipient_ciphertext bytea
 recipient_fingerprint bytea
 sender_identity_id uuid
@@ -137,9 +138,12 @@ max_attempts int
 route_version_id uuid nullable
 current_provider_id uuid nullable
 provider_message_id varchar nullable
+provider_accepted_at timestamptz nullable
+latest_sequence bigint
 last_error_category varchar nullable
 last_error_code varchar nullable
 last_error_summary varchar nullable
+last_error_retryable boolean nullable
 version bigint
 created_at timestamptz
 updated_at timestamptz
@@ -157,6 +161,10 @@ unique (tenant_id, idempotency_key)
 (recipient_fingerprint, created_at desc)
 (current_provider_id, status)
 ```
+
+04-A Migration 先实现租户、幂等身份和状态机快照字段。收件地址、模板变量、路由和
+Provider 配置需要先完成加密与控制面模型，将通过后续 Migration 增加，当前不会以
+明文占位。
 
 ### 3.5 `delivery_attempts`
 
@@ -208,6 +216,8 @@ id uuid primary key
 aggregate_type varchar
 aggregate_id uuid
 event_type varchar
+aggregate_sequence bigint
+dispatch_generation bigint
 payload jsonb
 status varchar
 available_at timestamptz
@@ -217,6 +227,11 @@ attempt_count int
 created_at timestamptz
 published_at timestamptz nullable
 ```
+
+Outbox 使用
+`(aggregate_type, aggregate_id, event_type, aggregate_sequence, dispatch_generation)`
+唯一约束。`event_type` 不可省略，因为一次状态推进产生的状态事件和 dispatch command
+可以共享 aggregate sequence。
 
 ### 3.8 `notification_deliveries`
 

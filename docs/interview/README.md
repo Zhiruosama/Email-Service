@@ -17,7 +17,7 @@ Mail Service 从零到可上线的每一个开发阶段。
 | 01 | 系统定位与架构基线 | 已完成 | [架构基线](01-architecture-baseline.md) |
 | 02 | 通用 gRPC V1 契约与工程骨架 | 已完成 | [gRPC 契约](02-grpc-contract.md) |
 | 03 | 领域模型与邮件状态机 | 已完成 | [领域状态机](03-domain-state-machine.md) |
-| 04 | PostgreSQL Migration 与 Repository | 未开始 | 完成后新增 |
+| 04 | PostgreSQL Migration 与 Repository | 进行中（04-A Migration 已完成） | [PostgreSQL 基础](04-postgresql-foundation.md) |
 | 05 | 幂等 SubmitEmail 与 Transactional Outbox | 未开始 | 完成后新增 |
 | 06 | Scheduler 与 Outbox Relay | 未开始 | 完成后新增 |
 | 07 | RabbitMQ Worker 与 Fake Provider | 未开始 | 完成后新增 |
@@ -31,7 +31,8 @@ Mail Service 从零到可上线的每一个开发阶段。
 2. [系统定位与架构基线](01-architecture-baseline.md)
 3. [通用 gRPC V1 契约](02-grpc-contract.md)
 4. [领域模型与邮件状态机](03-domain-state-machine.md)
-5. [核心术语速查](glossary.md)
+5. [PostgreSQL 基础与 Migration](04-postgresql-foundation.md)
+6. [核心术语速查](glossary.md)
 
 ## 每阶段固定记录结构
 
