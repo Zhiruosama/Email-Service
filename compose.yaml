@@ -17,5 +17,22 @@ services:
     volumes:
       - email-service-postgres-data:/var/lib/postgresql
 
+  rabbitmq:
+    image: ${RABBITMQ_IMAGE:-rabbitmq:4.3.4-management-alpine}
+    environment:
+      RABBITMQ_DEFAULT_USER: email_service
+      RABBITMQ_DEFAULT_PASS: email_service_dev
+    ports:
+      - "${MAIL_RABBITMQ_PORT:-5672}:5672"
+      - "${MAIL_RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - email-service-rabbitmq-data:/var/lib/rabbitmq
+
 volumes:
   email-service-postgres-data:
+  email-service-rabbitmq-data:

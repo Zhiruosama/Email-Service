@@ -31,7 +31,8 @@ Message + Outbox COMMIT
 - Broker 原始错误进入数据库或公开错误链，造成信息泄漏。
 
 本阶段完成数据库 Lease、fencing、Publisher 端口、失败分类、退避和可控 Fake Publisher。
-真实 RabbitMQ Adapter 留到 06-C。
+当时留给 06-C 的真实 RabbitMQ Adapter 现已完成，详见
+[RabbitMQ Publisher](06c-rabbitmq-publisher.md)。
 
 ## 2. 三段式处理流程
 
@@ -479,13 +480,13 @@ Claim 后、Publish 前可能崩溃，此时没有发生网络尝试的证据。
 
 ## 19. 尚未解决
 
-- RabbitMQ exchange/queue 声明和拓扑校验；
-- persistent message、mandatory publish 和 Publisher Confirm Adapter；
-- RabbitMQ 连接恢复、Channel 生命周期与 Confirm correlation；
+- RabbitMQ exchange/queue 声明、persistent message、mandatory、Publisher Confirm、按需
+  重连和 Channel 生命周期已在 [06-C RabbitMQ Publisher](06c-rabbitmq-publisher.md) 完成；
 - Relay role 的循环、空批次退避、优雅停机和 readiness；
 - Outbox lag、LeaseLost、Publish latency 和 DLQ 告警；
 - DEAD_LETTERED 查询、人工重放和权限审计；
 - Worker 对 event identity、sequence 和 dispatch generation 的幂等消费。
 
-下一阶段是 06-C RabbitMQ Publisher Adapter：保持本阶段端口和事务语义不变，只实现真实
-transport confirm、mandatory return、持久消息和路由键映射。
+本阶段的直接后继 06-C 保持了 Publisher 端口和事务语义，只增加真实 transport confirm、
+mandatory return、持久消息和路由键映射。当前下一阶段是 RabbitMQ Worker 与 Fake
+Provider。

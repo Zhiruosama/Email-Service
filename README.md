@@ -11,9 +11,10 @@ AI-Nexus 是第一个接入方，但不是 Mail Service 的架构边界。
 ## 当前阶段
 
 项目已完成架构基线、通用 gRPC V1 契约、领域状态机、PostgreSQL 18 Migration、
-Repository 与 version 乐观锁、Message + Transactional Outbox 原子持久化，以及数据库
-Scheduler、Outbox Relay 的 Lease/Fencing 和 Fake Publisher。下一阶段为 RabbitMQ
-Publisher Adapter。
+Repository 与 version 乐观锁、Message + Transactional Outbox 原子持久化、数据库
+Scheduler、Outbox Relay 的 Lease/Fencing，以及带 mandatory、Publisher Confirm、Quorum
+Queue 和按需重连的 RabbitMQ Publisher Adapter。下一阶段为 RabbitMQ Worker 与 Fake
+Provider。
 
 ## 设计文档
 
@@ -33,7 +34,7 @@ Publisher Adapter。
 - Go 1.25
 - gRPC + Protobuf
 - PostgreSQL 18
-- RabbitMQ 4.x Quorum Queues
+- RabbitMQ 4.3.4 Quorum Queues
 - OpenTelemetry
 - SMTP Provider 和可控 Fake Provider
 
@@ -58,24 +59,36 @@ make check-all
 本地 `protoc` 最低版本为 3.21，且需要能够找到标准
 `google/protobuf/*.proto` include 文件。
 
-## 本地 PostgreSQL
+## 本地基础设施
 
-本地开发数据库使用固定的 PostgreSQL 18.4 镜像：
+本地开发使用固定的 PostgreSQL 18.4 与 RabbitMQ 4.3.4 镜像：
 
 ```bash
 cp .env.example .env
-make db-up
+make infra-up
 make migrate-up
 make migrate-status
 ```
 
-停止容器但保留数据卷：
+也可以只启动或停止其中一个组件：
 
 ```bash
+make db-up
+make mq-up
 make db-down
+make mq-down
 ```
 
-Migration 文件校验和真实数据库集成测试：
+停止全部容器但保留数据卷：
+
+```bash
+make infra-down
+```
+
+RabbitMQ Management UI 默认为 `http://localhost:15672`，本地账号为
+`email_service / email_service_dev`。
+
+Migration 文件校验和真实 PostgreSQL + RabbitMQ 集成测试：
 
 ```bash
 make migrate-validate
@@ -83,4 +96,5 @@ make test-integration
 ```
 
 普通 `go test ./...` 不依赖 Docker；只有 integration build tag 会启动一次性 PostgreSQL
-容器。
+或 RabbitMQ 容器。RabbitMQ Publisher 集成测试还会验证 Broker 应用重启后的消息持久化
+与客户端重连。

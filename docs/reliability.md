@@ -219,6 +219,34 @@ CLOSED → OPEN → HALF_OPEN → CLOSED
 
 ## 7. MQ 拓扑
 
+06-C 已落地的第一版通用事件拓扑是：
+
+```text
+mail.events.v1 (durable topic exchange)
+  ├── mail.dispatch.v1.q
+  │     └── mail.message.dispatch.requested.v1
+  └── mail.lifecycle.v1.q
+        ├── mail.message.accepted.v1
+        └── mail.message.status.changed.v1
+```
+
+两条队列都是 durable Quorum Queue。派发 Worker 只消费 dispatch queue，不会把状态事件
+误当成发信命令；lifecycle queue 留给后续通知/审计出口。Event ID 使用 AMQP Message ID，
+Aggregate ID 使用 Correlation ID，sequence、dispatch generation 和 Outbox publish attempt
+使用类型化 Header。消息体仍然是安全 Outbox JSON，不包含邮件正文。
+
+当前按事件类型路由，不从 JSON payload 中解析 category。按 Critical、Transactional、
+Notification、Bulk 做物理舱壁仍是目标拓扑，但需要先把 category 设计成稳定、经过校验的
+路由元数据；不能让 RabbitMQ 基础设施层依赖某一版业务 JSON envelope。
+
+Publisher 使用一条长连接和有界 Channel 池，一次并发 Publish 独占一个 Channel。Adapter
+不使用客户端内存重发队列：连接失效后丢弃旧 Channel，下一次 Outbox Publish 按需重连并
+幂等重声明拓扑。Confirm 超时会废弃连接，防止旧 Channel 上迟到的 Return/Confirm 被误认
+为下一条消息的结果；这一动作可能让同连接上的其他在途 Publish 失败，但它们都会由
+Outbox 按 At Least Once 恢复。
+
+目标按类别隔离时拓扑扩展为：
+
 推荐使用 RabbitMQ Quorum Queues：
 
 ```text
@@ -246,6 +274,10 @@ mail.dead exchange
 - Prefetch 按 Provider 延迟和 Worker 并发调优；
 - 消息体只放任务 ID、租户 ID、事件 ID 和必要路由信息，不复制邮件正文；
 - 消息体携带 `dispatch_generation`，防止延迟到达的旧消息触发新的发送。
+
+`x-queue-type=quorum` 必须在声明队列时提供。max length、delivery limit 和 dead-letter
+策略优先通过 RabbitMQ Policy/Operator Policy 管理，因为它们需要在不改代码、不重建队列
+的情况下调整；应用声明只固定交换机、队列类型和 binding 这些协议契约。
 
 RabbitMQ 4.x Quorum Queue 默认存在 delivery limit，必须显式设计 DLQ，防止 poison
 message 被静默丢弃。

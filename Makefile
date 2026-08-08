@@ -3,7 +3,9 @@ PROTOC ?= protoc
 BUF_VERSION ?= v1.72.0
 GOOSE_VERSION ?= v3.27.3
 POSTGRES_IMAGE ?= postgres:18.4-alpine
+RABBITMQ_IMAGE ?= rabbitmq:4.3.4-management-alpine
 DATABASE_URL ?= postgres://email_service:email_service_dev@localhost:5432/email_service?sslmode=disable
+RABBITMQ_URL ?= amqp://email_service:email_service_dev@localhost:5672/
 GOOSE := $(GO) run -tags=no_clickhouse,no_libsql,no_mssql,no_mysql,no_sqlite3,no_vertica,no_ydb github.com/pressly/goose/v3/cmd/goose@$(GOOSE_VERSION)
 PROTO_DIR := api/proto
 GEN_DIR := gen/go
@@ -11,7 +13,7 @@ PROTO_FILES := $(shell find $(PROTO_DIR) -type f -name '*.proto' | sort)
 PROTOC_GEN_GO := $(shell $(GO) tool -n protoc-gen-go)
 PROTOC_GEN_GO_GRPC := $(shell $(GO) tool -n protoc-gen-go-grpc)
 
-.PHONY: help generate buf-generate proto-check proto-format-check proto-lint format test test-integration check check-all db-up db-down db-status migrate-up migrate-down migrate-status migrate-validate
+.PHONY: help generate buf-generate proto-check proto-format-check proto-lint format test test-integration check check-all infra-up infra-down infra-status db-up db-down db-status mq-up mq-down mq-status migrate-up migrate-down migrate-status migrate-validate
 
 help:
 	@echo "generate     Generate Go protobuf and gRPC bindings"
@@ -21,11 +23,18 @@ help:
 	@echo "proto-lint   Run pinned Buf lint"
 	@echo "format       Format Go source files"
 	@echo "test         Run Go tests"
-	@echo "test-integration Run PostgreSQL integration tests through Testcontainers"
+	@echo "test-integration Run PostgreSQL and RabbitMQ integration tests through Testcontainers"
 	@echo "check        Run schema compilation, generation, formatting, and tests"
 	@echo "check-all    Run Buf lint followed by check"
+	@echo "infra-up     Start PostgreSQL and RabbitMQ and wait until healthy"
+	@echo "infra-down   Stop local containers without deleting data volumes"
+	@echo "infra-status Show local container status"
 	@echo "db-up        Start the local PostgreSQL container and wait until healthy"
-	@echo "db-down      Stop local containers without deleting database volumes"
+	@echo "db-down      Stop PostgreSQL without deleting its data volume"
+	@echo "db-status    Show PostgreSQL status"
+	@echo "mq-up        Start the local RabbitMQ container and wait until healthy"
+	@echo "mq-down      Stop RabbitMQ without deleting its data volume"
+	@echo "mq-status    Show RabbitMQ status"
 	@echo "migrate-up   Apply all PostgreSQL migrations"
 	@echo "migrate-down Roll back one PostgreSQL migration"
 	@echo "migrate-status Show PostgreSQL migration status"
@@ -70,16 +79,41 @@ test:
 	$(GO) test ./...
 
 test-integration:
-	TEST_POSTGRES_IMAGE=$(POSTGRES_IMAGE) $(GO) test -tags=integration ./internal/integration/...
+	TEST_POSTGRES_IMAGE=$(POSTGRES_IMAGE) TEST_RABBITMQ_IMAGE=$(RABBITMQ_IMAGE) $(GO) test -tags=integration ./internal/integration/...
+
+infra-up:
+	POSTGRES_IMAGE=$(POSTGRES_IMAGE) RABBITMQ_IMAGE=$(RABBITMQ_IMAGE) \
+		MAIL_POSTGRES_PORT=$${MAIL_POSTGRES_PORT:-5432} \
+		MAIL_RABBITMQ_PORT=$${MAIL_RABBITMQ_PORT:-5672} \
+		MAIL_RABBITMQ_MANAGEMENT_PORT=$${MAIL_RABBITMQ_MANAGEMENT_PORT:-15672} \
+		docker compose up -d --wait postgres rabbitmq
+
+infra-down:
+	docker compose down
+
+infra-status:
+	docker compose ps
 
 db-up:
 	POSTGRES_IMAGE=$(POSTGRES_IMAGE) MAIL_POSTGRES_PORT=$${MAIL_POSTGRES_PORT:-5432} docker compose up -d --wait postgres
 
 db-down:
-	docker compose down
+	docker compose stop postgres
 
 db-status:
-	docker compose ps
+	docker compose ps postgres
+
+mq-up:
+	RABBITMQ_IMAGE=$(RABBITMQ_IMAGE) \
+		MAIL_RABBITMQ_PORT=$${MAIL_RABBITMQ_PORT:-5672} \
+		MAIL_RABBITMQ_MANAGEMENT_PORT=$${MAIL_RABBITMQ_MANAGEMENT_PORT:-15672} \
+		docker compose up -d --wait rabbitmq
+
+mq-down:
+	docker compose stop rabbitmq
+
+mq-status:
+	docker compose ps rabbitmq
 
 migrate-up:
 	$(GOOSE) -dir db/migrations/sql postgres "$(DATABASE_URL)" up

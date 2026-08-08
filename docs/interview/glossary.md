@@ -63,6 +63,29 @@ Provider 的执行角色。
 RabbitMQ 向 Publisher 确认 Broker 已经接管消息的机制。Confirm 丢失时 Publisher 无法
 判断结果，可能重发，因此 Consumer 必须幂等。
 
+## `mandatory` Publish
+
+AMQP 发布标志。Exchange 存在但没有 Queue 匹配 routing key 时，RabbitMQ 通过
+`basic.return` 把消息退回 Publisher；如果不启用，消息可能被静默丢弃。Return 只说明
+路由失败，Confirm 说明 Broker 对这次 Publish 的处理结果，二者不能互相替代。
+
+## AMQP Connection 与 Channel
+
+Connection 是昂贵、长生命周期的 TCP 连接；Channel 是复用该连接的轻量逻辑会话。
+Publisher 使用一条长连接和有界 Channel 池，一次并发发布独占一个 Channel，不能让多个
+goroutine 共享同一 Channel 做 Publish/Confirm correlation。
+
+## Persistent Message
+
+AMQP 消息的 delivery mode。Persistent message 与 durable queue 配合，使 Broker 重启后
+能够恢复消息；它不代表发布方已经知道消息落盘，仍需要 Publisher Confirm。
+
+## Quorum Queue
+
+RabbitMQ 基于 Raft 的复制队列类型，面向数据安全和高可用。声明时需要
+`x-queue-type=quorum` 且队列天然 durable。单节点开发环境只能验证协议和重启持久化，不能
+证明三节点多数派故障容忍。
+
 ## Consumer Ack
 
 Worker 完成持久化处理后向 RabbitMQ 确认消息可以删除。应在数据库事务提交后 ACK，

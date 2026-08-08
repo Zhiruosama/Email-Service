@@ -106,6 +106,16 @@ mail-service --role=all
 - 临时失败通过 Full Jitter 更新 `available_at`，永久失败进入死信；
 - Relay 不删除业务任务，仅更新 Outbox 投递进度。
 
+RabbitMQ Adapter 使用一条长连接和有界 Publisher Channel 池。一次并发 Publish 独占一个
+Channel，避免 AMQP frame 和 Confirm correlation 被共享并发破坏；连接、Channel 或
+Confirm 失败时不在客户端内存缓存消息，而是返回稳定错误给 Relay，由 PostgreSQL Outbox
+决定重试。
+
+Adapter 构造时只校验配置，不要求 RabbitMQ 在线。第一次 Publish 按需连接并声明拓扑；
+连接失效后下一次 Publish 重新连接和声明。这样 `role=all` 启动时 RabbitMQ 故障不会反向
+阻止 Submission API 依靠 PostgreSQL 可靠受理，但 Relay readiness、Outbox lag 和容量保护
+仍需进入后续可观测性阶段。
+
 ### 3.4 Delivery Worker
 
 - 手动 ACK RabbitMQ 消息；
