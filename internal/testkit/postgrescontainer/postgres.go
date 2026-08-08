@@ -19,8 +19,22 @@ import (
 
 const defaultImage = "postgres:18.4-alpine"
 
-// Start creates a disposable PostgreSQL database and registers cleanup with t.
+// Instance exposes both the database/sql handle used by Goose and the native
+// pgx connection string used by repository tests.
+type Instance struct {
+	SQL              *sql.DB
+	ConnectionString string
+}
+
+// Start preserves the compact migration-test API.
 func Start(t *testing.T) *sql.DB {
+	t.Helper()
+	return StartInstance(t).SQL
+}
+
+// StartInstance creates a disposable PostgreSQL database and registers cleanup
+// with t.
+func StartInstance(t *testing.T) Instance {
 	t.Helper()
 
 	// The first run may need to pull the pinned PostgreSQL image. Keep this
@@ -67,5 +81,5 @@ func Start(t *testing.T) *sql.DB {
 		t.Fatalf("ping PostgreSQL: %v", err)
 	}
 
-	return db
+	return Instance{SQL: db, ConnectionString: connectionString}
 }

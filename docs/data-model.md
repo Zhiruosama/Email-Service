@@ -162,6 +162,10 @@ unique (tenant_id, idempotency_key)
 (current_provider_id, status)
 ```
 
+单 Message 更新使用 `WHERE id = ? AND version = ?`，成功后由数据库执行
+`version = version + 1`。影响 0 行表示调用方持有旧 Snapshot，必须重新读取并重新执行
+状态机，不能直接覆盖当前状态。Scheduler 的批量领取才使用行锁，两者职责不同。
+
 04-A Migration 先实现租户、幂等身份和状态机快照字段。收件地址、模板变量、路由和
 Provider 配置需要先完成加密与控制面模型，将通过后续 Migration 增加，当前不会以
 明文占位。

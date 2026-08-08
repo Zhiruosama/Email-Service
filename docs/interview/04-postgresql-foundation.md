@@ -3,6 +3,10 @@
 - 状态：已完成
 - 阶段目标：用可版本化 SQL 建立租户、Message 状态快照和 Outbox 的数据库地基，并在真实 PostgreSQL 18 上验证约束、索引与回滚
 
+后续 04-B Repository 与乐观锁也已完成，参见
+[PostgreSQL Repository 与乐观锁](04b-postgresql-repository.md)。本篇“尚未解决”保留
+04-A 完成时的阶段边界，用于复盘实施顺序。
+
 ## 1. 解决的问题
 
 上一阶段的 Message 只存在于 Go 内存。服务重启后状态会丢失，也无法可靠实现幂等、
