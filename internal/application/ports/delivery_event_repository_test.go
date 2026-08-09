@@ -41,3 +41,22 @@ func TestDeliveryEventValidate(t *testing.T) {
 		}
 	}
 }
+
+func TestPersistedDeliveryEventRequiresObservationTime(t *testing.T) {
+	event := PersistedDeliveryEvent{DeliveryEvent: DeliveryEvent{
+		ID:             "c0000000-0000-4000-8000-000000000001",
+		TenantID:       "c0000000-0000-4000-8000-000000000002",
+		MessageID:      "c0000000-0000-4000-8000-000000000003",
+		IdempotencyKey: "request-1",
+		Status:         message.StatusAccepted,
+		Sequence:       1,
+		OccurredAt:     time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC),
+	}}
+	if err := event.Validate(); !errors.Is(err, ErrInvalidDeliveryEvent) {
+		t.Fatalf("missing observed time error = %v, want ErrInvalidDeliveryEvent", err)
+	}
+	event.ObservedAt = event.OccurredAt.Add(time.Second)
+	if err := event.Validate(); err != nil {
+		t.Fatalf("valid persisted event: %v", err)
+	}
+}

@@ -36,3 +36,22 @@ const deliveryEventMatchesQuery = `
 	FROM delivery_events
 	WHERE message_id = $3 AND sequence = $6
 `
+
+const getDeliveryEventByIDQuery = `
+	SELECT
+		id,
+		tenant_id,
+		message_id,
+		idempotency_key,
+		status,
+		sequence,
+		attempt_number,
+		provider_message_id,
+		failure_category,
+		failure_code,
+		failure_retryable,
+		occurred_at,
+		observed_at
+	FROM delivery_events
+	WHERE id = $1
+`

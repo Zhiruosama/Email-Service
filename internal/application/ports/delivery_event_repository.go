@@ -14,6 +14,8 @@ import (
 
 var (
 	ErrInvalidDeliveryEvent    = errors.New("invalid delivery event")
+	ErrDeliveryEventNotFound   = errors.New("delivery event not found")
+	ErrCorruptDeliveryEvent    = errors.New("corrupt persisted delivery event")
 	ErrDeliveryEventConflict   = errors.New("delivery event identity conflict")
 	ErrDeliveryEventRepository = errors.New("delivery event repository failure")
 )
@@ -68,4 +70,29 @@ func (e DeliveryEvent) Validate() error {
 
 type DeliveryEventRepository interface {
 	Append(context.Context, []DeliveryEvent) error
+}
+
+// PersistedDeliveryEvent adds the database observation time to the immutable
+// business fact. OccurredAt is when the state transition happened;
+// ObservedAt is when this service committed the fact to its journal.
+type PersistedDeliveryEvent struct {
+	DeliveryEvent
+	ObservedAt time.Time
+}
+
+func (e PersistedDeliveryEvent) Validate() error {
+	if err := e.DeliveryEvent.Validate(); err != nil {
+		return err
+	}
+	if e.ObservedAt.IsZero() {
+		return fmt.Errorf("%w: observed time is required", ErrInvalidDeliveryEvent)
+	}
+	return nil
+}
+
+// DeliveryEventReader is deliberately separate from the append port. Runtime
+// notification workers can be backed by a read replica without expanding the
+// transactional write-side dependency.
+type DeliveryEventReader interface {
+	GetByID(context.Context, string) (PersistedDeliveryEvent, error)
 }

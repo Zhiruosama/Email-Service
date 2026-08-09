@@ -21,7 +21,9 @@ HMAC 幂等指纹、AES-GCM 加密，以及 Message + Submission + Outbox 同事
 `SubmitEmail/GetEmail` gRPC、固定开发租户身份边界、验证码模板目录和标准错误映射也已接入，
 真实纵向测试从 gRPC Submit 跑到 Fake Provider 再由 gRPC Get 查询。Delivery Event Journal
 也已完成，Message、不可变状态历史与 lifecycle Outbox 在同一事务提交，并共享稳定 event ID。
-下一阶段为 Notification Worker 与 AI-Nexus 回调联调。
+Notification Worker 核心和 gRPC Callback Client 现已完成：它按 event ID 回查权威 Journal，
+限制回调超时，并把成功、可重试和永久失败转换成稳定语义。下一阶段为 lifecycle RabbitMQ
+Consumer、通知延迟重试、独立 DLQ 与运行时装配。
 
 ## 设计文档
 

@@ -166,6 +166,24 @@ func TestEmailSubmissionIsAtomicIdempotentAndEncrypted(t *testing.T) {
 		t.Fatalf("read accepted journal event: %v", err)
 	}
 	journalRepository := postgresstore.NewDeliveryEventRepository(pool)
+	persistedAccepted, err := journalRepository.GetByID(ctx, acceptedEventID)
+	if err != nil {
+		t.Fatalf("get accepted journal event by id: %v", err)
+	}
+	if persistedAccepted.ID != acceptedEventID ||
+		persistedAccepted.MessageID != messageID ||
+		persistedAccepted.IdempotencyKey != command.IdempotencyKey ||
+		persistedAccepted.Status != message.StatusAccepted ||
+		persistedAccepted.Sequence != 1 ||
+		persistedAccepted.ObservedAt.IsZero() {
+		t.Fatalf("unexpected persisted accepted event: %#v", persistedAccepted)
+	}
+	if _, err := journalRepository.GetByID(
+		ctx,
+		"a1000000-0000-4000-8000-000000000099",
+	); !errors.Is(err, ports.ErrDeliveryEventNotFound) {
+		t.Fatalf("missing journal event error = %v, want ErrDeliveryEventNotFound", err)
+	}
 	acceptedEvent := ports.DeliveryEvent{
 		ID:             acceptedEventID,
 		TenantID:       submissionTenantID,
