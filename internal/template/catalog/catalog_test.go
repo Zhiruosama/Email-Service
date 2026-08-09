@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Zhiruosama/Email-Service/internal/application/ports"
@@ -22,6 +23,37 @@ func TestVerificationCatalogPinsVersionAndCanonicalizesVariables(t *testing.T) {
 	}
 	if resolved.Version != 1 || string(resolved.Variables) != `{"code":"123456","purpose":"LOGIN","valid_for_seconds":300}` {
 		t.Fatalf("unexpected resolved template: %#v", resolved)
+	}
+}
+
+func TestVerificationCatalogRendersPinnedTextAndHTML(t *testing.T) {
+	catalog := NewVerificationCatalog("tenant-1")
+	rendered, err := catalog.RenderDelivery(context.Background(), ports.RenderDeliveryRequest{
+		TenantID:        "tenant-1",
+		TemplateKey:     VerificationCodeTemplateKey,
+		TemplateVersion: 1,
+		Locale:          "zh-CN",
+		Variables:       json.RawMessage(`{"code":"123456","purpose":"LOGIN","valid_for_seconds":300}`),
+	})
+	if err != nil {
+		t.Fatalf("render verification email: %v", err)
+	}
+	if rendered.Subject != "AI Nexus 登录验证码" ||
+		!strings.Contains(rendered.TextBody, "123456") ||
+		!strings.Contains(rendered.HTMLBody, "123456") ||
+		!strings.Contains(rendered.HTMLBody, "<!doctype html>") {
+		t.Fatalf("unexpected rendered email: %#v", rendered)
+	}
+	wrongVersion := uint32(2)
+	_, err = catalog.RenderDelivery(context.Background(), ports.RenderDeliveryRequest{
+		TenantID:        "tenant-1",
+		TemplateKey:     VerificationCodeTemplateKey,
+		TemplateVersion: wrongVersion,
+		Locale:          "zh-CN",
+		Variables:       json.RawMessage(`{"code":"123456","purpose":"LOGIN","valid_for_seconds":300}`),
+	})
+	if !errors.Is(err, ports.ErrTemplateNotFound) {
+		t.Fatalf("wrong render version error = %v, want ErrTemplateNotFound", err)
 	}
 }
 

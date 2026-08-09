@@ -14,9 +14,11 @@ import (
 	notificationapp "github.com/Zhiruosama/Email-Service/internal/application/notification"
 	"github.com/Zhiruosama/Email-Service/internal/application/ports"
 	consumerrabbit "github.com/Zhiruosama/Email-Service/internal/consumer/rabbitmq"
+	"github.com/Zhiruosama/Email-Service/internal/content/mimebuilder"
 	providerfake "github.com/Zhiruosama/Email-Service/internal/provider/fake"
 	publisherabbit "github.com/Zhiruosama/Email-Service/internal/publisher/rabbitmq"
 	payloadsecurity "github.com/Zhiruosama/Email-Service/internal/security/payload"
+	senderstatic "github.com/Zhiruosama/Email-Service/internal/sender/static"
 	postgresstore "github.com/Zhiruosama/Email-Service/internal/storage/postgres"
 	"github.com/Zhiruosama/Email-Service/internal/subscriber/grpcsubscriber"
 	templatecatalog "github.com/Zhiruosama/Email-Service/internal/template/catalog"
@@ -100,8 +102,42 @@ func NewApp(ctx context.Context, config Config, logger *slog.Logger) (*App, erro
 	if err != nil {
 		return nil, fmt.Errorf("%w: create delivery retry policy", ErrStartup)
 	}
+	protector, err := payloadsecurity.New(
+		config.SubmissionSecurity.PayloadKeyID,
+		config.SubmissionSecurity.EncryptionKey,
+		config.SubmissionSecurity.FingerprintKey,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("%w: create payload protector", ErrStartup)
+	}
+	templates := templatecatalog.NewVerificationCatalog(
+		config.SubmissionSecurity.DevelopmentTenantID,
+	)
+	senders, err := senderstatic.New(
+		config.SubmissionSecurity.DevelopmentTenantID,
+		ports.SenderIdentity{
+			Key:         templatecatalog.AINexusSenderIdentityKey,
+			Address:     "no-reply@example.invalid",
+			DisplayName: "AI Nexus",
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("%w: create sender identity resolver", ErrStartup)
+	}
+	materials := deliveryapp.NewDeliveryMaterialService(
+		protector,
+		templates,
+		senders,
+		mimebuilder.New(),
+	)
 	provider := providerfake.New(nil)
-	worker, err := deliveryapp.NewDispatchWorker(transactor, provider, deliveryRetry, config.Worker)
+	worker, err := deliveryapp.NewDispatchWorker(
+		transactor,
+		provider,
+		materials,
+		deliveryRetry,
+		config.Worker,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("%w: create dispatch worker", ErrStartup)
 	}
@@ -134,17 +170,6 @@ func NewApp(ctx context.Context, config Config, logger *slog.Logger) (*App, erro
 	if err != nil {
 		return nil, fmt.Errorf("%w: create lifecycle RabbitMQ consumer", ErrStartup)
 	}
-	protector, err := payloadsecurity.New(
-		config.SubmissionSecurity.PayloadKeyID,
-		config.SubmissionSecurity.EncryptionKey,
-		config.SubmissionSecurity.FingerprintKey,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("%w: create payload protector", ErrStartup)
-	}
-	templates := templatecatalog.NewVerificationCatalog(
-		config.SubmissionSecurity.DevelopmentTenantID,
-	)
 	submitter := deliveryapp.NewEmailSubmissionService(transactor, templates, protector)
 	querier := deliveryapp.NewEmailQueryService(postgresstore.NewMessageRepository(pool))
 	deliveryServer := grpcapi.NewDeliveryServer(submitter, querier)

@@ -93,3 +93,36 @@ func (p *Protector) Seal(
 	}
 	return result, nil
 }
+
+func (p *Protector) Open(
+	ctx context.Context,
+	associatedData string,
+	protected ports.ProtectedPayload,
+) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if associatedData == "" {
+		return nil, fmt.Errorf("%w: associated data is required", ports.ErrPayloadProtection)
+	}
+	if err := protected.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: protected payload is invalid", ports.ErrPayloadAuthentication)
+	}
+	if protected.KeyID != p.keyID {
+		return nil, fmt.Errorf("%w: configured key cannot open payload", ports.ErrPayloadKeyUnavailable)
+	}
+	nonceSize := p.aead.NonceSize()
+	if len(protected.Ciphertext) <= nonceSize {
+		return nil, fmt.Errorf("%w: ciphertext is truncated", ports.ErrPayloadAuthentication)
+	}
+	plaintext, err := p.aead.Open(
+		nil,
+		protected.Ciphertext[:nonceSize],
+		protected.Ciphertext[nonceSize:],
+		[]byte(associatedData),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("%w: authenticated decryption rejected payload", ports.ErrPayloadAuthentication)
+	}
+	return plaintext, nil
+}

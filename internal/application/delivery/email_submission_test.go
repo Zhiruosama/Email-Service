@@ -15,6 +15,9 @@ func TestNormalizeSubmissionCanonicalizesAddressLocaleAndMetadata(t *testing.T) 
 	command.RecipientEmail = "Alice@Example.COM"
 	command.Locale = "zh-cn"
 	command.Metadata = map[string]string{"trace": "abc", "source": "test"}
+	command.DispatchDeadline = command.DispatchDeadline.Add(789 * time.Nanosecond)
+	scheduledAt := command.DispatchDeadline.Add(-time.Minute).Add(456 * time.Nanosecond)
+	command.ScheduledAt = &scheduledAt
 
 	normalized, metadata, err := normalizeSubmission(command)
 	if err != nil {
@@ -31,6 +34,10 @@ func TestNormalizeSubmissionCanonicalizesAddressLocaleAndMetadata(t *testing.T) 
 	}
 	if normalized.Metadata != nil {
 		t.Fatal("normalized command retained the source metadata map")
+	}
+	if normalized.DispatchDeadline.Nanosecond()%1_000 != 0 ||
+		normalized.ScheduledAt == nil || normalized.ScheduledAt.Nanosecond()%1_000 != 0 {
+		t.Fatal("timestamps were not normalized to PostgreSQL microsecond precision")
 	}
 }
 
@@ -139,5 +146,8 @@ type nilProtector struct{}
 
 func (nilProtector) Fingerprint([]byte) [32]byte { panic("must not be called") }
 func (nilProtector) Seal(context.Context, string, []byte) (ports.ProtectedPayload, error) {
+	panic("must not be called")
+}
+func (nilProtector) Open(context.Context, string, ports.ProtectedPayload) ([]byte, error) {
 	panic("must not be called")
 }

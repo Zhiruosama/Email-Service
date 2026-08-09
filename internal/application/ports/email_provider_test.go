@@ -17,6 +17,11 @@ func TestProviderRequestAndResultValidation(t *testing.T) {
 		DispatchGeneration:  1,
 		Category:            EmailCategoryCritical,
 		DuplicateRiskPolicy: DuplicateRiskAvoidDuplicate,
+		Material: DeliveryMaterial{
+			EnvelopeFrom: "sender@example.com",
+			EnvelopeTo:   "recipient@example.com",
+			MIMEMessage:  []byte("Subject: test\r\n\r\nbody"),
+		},
 	}
 	if err := request.Validate(); err != nil {
 		t.Fatalf("valid request rejected: %v", err)

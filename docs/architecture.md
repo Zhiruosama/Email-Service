@@ -136,9 +136,11 @@ Adapter 构造时只校验配置，不要求 RabbitMQ 在线。第一次 Publish
 
 07-A/07-B 已完成上述 Worker 应用内核、Fake Provider 和 RabbitMQ Consumer；07-C 已将
 Scheduler、Relay、Publisher、Worker、Consumer、标准 gRPC Health 与 Submission/Query API
-已装配为可运行进程。当前
-Provider Request 只含 Message、Tenant、Attempt 和策略元数据；模板、收件人密文、MIME
-渲染与 Provider Router 会在相应数据模型完成后接入，不能用明文占位绕过安全设计。
+装配为可运行进程。09-A1 已在领取事务提交后、Provider 调用前接入 Delivery Material
+Builder：它认证解密受理 Payload，交叉校验不可变安全字段，按固定模板版本分别渲染 HTML 与
+Plain Text，再生成有边界和大小限制的 UTF-8 `multipart/alternative` MIME。Provider Request
+因此包含派发元数据和一次性 Delivery Material；收件地址和 MIME 只在同步 Provider 调用期间
+存在，不进入 Outbox、Attempt、Journal 或普通日志。Provider Router 仍待控制面阶段接入。
 
 ### 3.5 Provider Router
 

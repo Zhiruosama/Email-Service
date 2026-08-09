@@ -203,6 +203,116 @@ func TestDispatchWorker(t *testing.T) {
 		)
 	})
 
+	t.Run("schedules retry when delivery material is temporarily unavailable", func(t *testing.T) {
+		record, command := createDispatchRecord(
+			t,
+			ctx,
+			store,
+			tenantID,
+			"91000000-0000-4000-8000-000000000007",
+			"92000000-0000-4000-8000-000000000007",
+			"worker-material-retry",
+			0xd7,
+		)
+		provider := providerfake.New(nil)
+		worker := mustDispatchWorkerWithMaterial(
+			t,
+			transactor,
+			provider,
+			failingIntegrationMaterialBuilder{
+				err: ports.NewDeliveryMaterialError(
+					"PAYLOAD_KEY_UNAVAILABLE",
+					true,
+					errors.New("private key-service detail must not persist"),
+				),
+			},
+			fixedDeliveryRetry(time.Minute),
+		)
+
+		result, err := worker.Process(ctx, command)
+		if err != nil {
+			t.Fatalf("process retryable material failure: %v", err)
+		}
+		if result.Disposition != delivery.DispatchRetryScheduled {
+			t.Fatalf("material retry result = %#v", result)
+		}
+		assertPersistedMessageState(
+			t,
+			ctx,
+			messageRepository,
+			record.Message.ID(),
+			message.StatusRetryScheduled,
+			2,
+		)
+		assertDeliveryAttempt(
+			t,
+			ctx,
+			pool,
+			result.AttemptID,
+			"FAILED",
+			"",
+			"PAYLOAD_KEY_UNAVAILABLE",
+		)
+		if len(provider.Requests()) != 0 {
+			t.Fatal("provider was called without delivery material")
+		}
+	})
+
+	t.Run("permanently fails authenticated material corruption", func(t *testing.T) {
+		record, command := createDispatchRecord(
+			t,
+			ctx,
+			store,
+			tenantID,
+			"91000000-0000-4000-8000-000000000008",
+			"92000000-0000-4000-8000-000000000008",
+			"worker-material-permanent",
+			0xd8,
+		)
+		provider := providerfake.New(nil)
+		worker := mustDispatchWorkerWithMaterial(
+			t,
+			transactor,
+			provider,
+			failingIntegrationMaterialBuilder{
+				err: ports.NewDeliveryMaterialError(
+					"PAYLOAD_AUTHENTICATION_FAILED",
+					false,
+					errors.New("private ciphertext detail must not persist"),
+				),
+			},
+			fixedDeliveryRetry(time.Minute),
+		)
+
+		result, err := worker.Process(ctx, command)
+		if err != nil {
+			t.Fatalf("process permanent material failure: %v", err)
+		}
+		if result.Disposition != delivery.DispatchPermanentlyFailed {
+			t.Fatalf("material permanent result = %#v", result)
+		}
+		assertPersistedMessageState(
+			t,
+			ctx,
+			messageRepository,
+			record.Message.ID(),
+			message.StatusPermanentlyFailed,
+			2,
+		)
+		assertDeliveryAttempt(
+			t,
+			ctx,
+			pool,
+			result.AttemptID,
+			"FAILED",
+			"",
+			"PAYLOAD_AUTHENTICATION_FAILED",
+		)
+		if len(provider.Requests()) != 0 {
+			t.Fatal("provider was called with corrupted delivery material")
+		}
+	})
+
 	t.Run("rolls back claim if its outbox event cannot persist", func(t *testing.T) {
 		record, command := createDispatchRecord(
 			t,
@@ -335,10 +445,27 @@ func mustDispatchWorker(
 	provider ports.EmailProvider,
 	retry delivery.DeliveryRetryPolicy,
 ) *delivery.DispatchWorker {
+	return mustDispatchWorkerWithMaterial(
+		t,
+		transactor,
+		provider,
+		integrationMaterialBuilder{},
+		retry,
+	)
+}
+
+func mustDispatchWorkerWithMaterial(
+	t *testing.T,
+	transactor ports.Transactor,
+	provider ports.EmailProvider,
+	materialBuilder ports.DeliveryMaterialBuilder,
+	retry delivery.DeliveryRetryPolicy,
+) *delivery.DispatchWorker {
 	t.Helper()
 	worker, err := delivery.NewDispatchWorker(
 		transactor,
 		provider,
+		materialBuilder,
 		retry,
 		delivery.DispatchWorkerConfig{
 			ProviderTimeout: 5 * time.Second,
@@ -349,6 +476,37 @@ func mustDispatchWorker(
 		t.Fatalf("new Dispatch Worker: %v", err)
 	}
 	return worker
+}
+
+type failingIntegrationMaterialBuilder struct {
+	err error
+}
+
+func (b failingIntegrationMaterialBuilder) Build(
+	context.Context,
+	ports.MessageRecord,
+	ports.StartedDeliveryAttempt,
+) (ports.DeliveryMaterial, error) {
+	return ports.DeliveryMaterial{}, b.err
+}
+
+type integrationMaterialBuilder struct{}
+
+func (integrationMaterialBuilder) Build(
+	_ context.Context,
+	record ports.MessageRecord,
+	_ ports.StartedDeliveryAttempt,
+) (ports.DeliveryMaterial, error) {
+	return ports.DeliveryMaterial{
+		EnvelopeFrom: "sender@example.com",
+		EnvelopeTo:   "recipient@example.com",
+		MIMEMessage: []byte(
+			"From: sender@example.com\r\n" +
+				"To: recipient@example.com\r\n" +
+				"Subject: integration test\r\n\r\n" +
+				"message " + record.Message.ID(),
+		),
+	}, nil
 }
 
 func createDispatchRecord(

@@ -65,15 +65,17 @@
 
 实现：
 
+- 已完成：加密 Payload 认证解密与不可变身份交叉校验；
+- 已完成：固定版本模板渲染、HTML + Plain Text MIME；
+- 已完成：构建失败的可重试/永久失败分流；
 - SMTP Provider；
 - QQ SMTP 配置；
-- MIME HTML + Plain Text；
 - 超时和错误分类；
 - Provider 级限速；
 - 熔断和舱壁；
 - Retry Scheduler；
 - DLQ 和安全重放；
-- 敏感 payload 加密及清理。
+- 终态敏感 payload 清理。
 
 验证：
 

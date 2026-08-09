@@ -130,6 +130,7 @@ func ClassifyDispatchError(err error) DispatchErrorClass {
 type DispatchWorker struct {
 	transactor ports.Transactor
 	provider   ports.EmailProvider
+	materials  ports.DeliveryMaterialBuilder
 	retry      DeliveryRetryPolicy
 	config     DispatchWorkerConfig
 }
@@ -137,6 +138,7 @@ type DispatchWorker struct {
 func NewDispatchWorker(
 	transactor ports.Transactor,
 	provider ports.EmailProvider,
+	materials ports.DeliveryMaterialBuilder,
 	retryPolicy DeliveryRetryPolicy,
 	config DispatchWorkerConfig,
 ) (*DispatchWorker, error) {
@@ -145,6 +147,9 @@ func NewDispatchWorker(
 	}
 	if provider == nil {
 		panic("delivery: nil email provider")
+	}
+	if materials == nil {
+		panic("delivery: nil delivery material builder")
 	}
 	if retryPolicy == nil {
 		panic("delivery: nil delivery retry policy")
@@ -158,6 +163,7 @@ func NewDispatchWorker(
 	return &DispatchWorker{
 		transactor: transactor,
 		provider:   provider,
+		materials:  materials,
 		retry:      retryPolicy,
 		config:     config,
 	}, nil
@@ -178,10 +184,26 @@ func (w *DispatchWorker) Process(
 		return *claim.resolved, nil
 	}
 
+	material, materialErr := w.materials.Build(ctx, claim.record, claim.attempt)
+	if materialErr == nil {
+		materialErr = material.Validate()
+	}
+	if materialErr != nil {
+		return w.finalizeBounded(ctx, claim, materialBuildProviderResult(materialErr))
+	}
+	claim.request.Material = material
+	if err := claim.request.Validate(); err != nil {
+		clear(material.MIMEMessage)
+		return w.finalizeBounded(ctx, claim, materialBuildProviderResult(
+			ports.NewDeliveryMaterialError("MATERIAL_OUTPUT_INVALID", false, err),
+		))
+	}
+
 	providerCtx, cancelProvider := context.WithTimeout(ctx, w.config.ProviderTimeout)
 	providerResult := w.provider.Submit(providerCtx, claim.request)
 	providerContextErr := providerCtx.Err()
 	cancelProvider()
+	clear(material.MIMEMessage)
 
 	if err := providerResult.Validate(); err != nil {
 		if providerContextErr != nil {
@@ -211,18 +233,14 @@ func (w *DispatchWorker) Process(
 	// Once Submit has run, persisting its observation is a bounded critical
 	// section. It must still be attempted during consumer shutdown, otherwise a
 	// successful provider call would be needlessly left as STARTED/SENDING.
-	finalizeCtx, cancelFinalize := context.WithTimeout(
-		context.WithoutCancel(ctx),
-		w.config.FinalizeTimeout,
-	)
-	defer cancelFinalize()
-	return w.finalize(finalizeCtx, claim, providerResult)
+	return w.finalizeBounded(ctx, claim, providerResult)
 }
 
 type dispatchClaim struct {
 	command  DispatchCommand
 	request  ports.ProviderRequest
 	attempt  ports.StartedDeliveryAttempt
+	record   ports.MessageRecord
 	resolved *DispatchResult
 }
 
@@ -299,6 +317,7 @@ func (w *DispatchWorker) claim(
 
 		changed = aggregate
 		claim.attempt = attempt
+		claim.record = record
 		claim.request = ports.ProviderRequest{
 			AttemptID:           attempt.ID,
 			MessageID:           command.MessageID,
@@ -308,7 +327,7 @@ func (w *DispatchWorker) claim(
 			Category:            record.Category,
 			DuplicateRiskPolicy: record.DuplicateRiskPolicy,
 		}
-		return claim.request.Validate()
+		return nil
 	})
 	if err != nil {
 		return dispatchClaim{}, err
@@ -317,6 +336,42 @@ func (w *DispatchWorker) claim(
 		changed.PullEvents()
 	}
 	return claim, nil
+}
+
+func (w *DispatchWorker) finalizeBounded(
+	ctx context.Context,
+	claim dispatchClaim,
+	result ports.ProviderResult,
+) (DispatchResult, error) {
+	finalizeCtx, cancelFinalize := context.WithTimeout(
+		context.WithoutCancel(ctx),
+		w.config.FinalizeTimeout,
+	)
+	defer cancelFinalize()
+	return w.finalize(finalizeCtx, claim, result)
+}
+
+func materialBuildProviderResult(err error) ports.ProviderResult {
+	failure := message.Failure{
+		Category:  message.FailureInternal,
+		Code:      "MATERIAL_BUILD_INTERNAL",
+		Retryable: true,
+	}
+	var materialErr *ports.DeliveryMaterialError
+	if errors.As(err, &materialErr) {
+		if validationErr := materialErr.Validate(); validationErr == nil {
+			failure.Code = materialErr.Code
+			failure.Retryable = materialErr.Retryable
+		} else {
+			failure.Code = "MATERIAL_ERROR_INVALID"
+			failure.Retryable = false
+		}
+	} else if errors.Is(err, context.DeadlineExceeded) {
+		failure.Code = "MATERIAL_BUILD_TIMEOUT"
+	} else if errors.Is(err, context.Canceled) {
+		failure.Code = "MATERIAL_BUILD_CANCELED"
+	}
+	return ports.ProviderResult{Outcome: ports.ProviderOutcomeFailed, Failure: &failure}
 }
 
 func (w *DispatchWorker) finalize(

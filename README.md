@@ -24,8 +24,10 @@ HMAC 幂等指纹、AES-GCM 加密，以及 Message + Submission + Outbox 同事
 Notification Worker 核心和 gRPC Callback Client 现已完成：它按 event ID 回查权威 Journal，
 限制回调超时，并把成功、可重试和永久失败转换成稳定语义。Lifecycle RabbitMQ Consumer、
 通知延迟重试、独立 DLQ、双 Consumer readiness 与运行时装配也已完成，真实纵向测试能够从
-SubmitEmail 一直运行到四条状态 gRPC Callback。下一阶段为真实 SMTP Provider、MIME 渲染、
-错误分类以及 Provider 级限流/熔断。
+SubmitEmail 一直运行到四条状态 gRPC Callback。投递前的 Delivery Material 链路现也已完成：
+Worker 在数据库事务外认证解密 Payload、校验不可变身份、渲染固定模板并生成 UTF-8
+multipart/alternative MIME，明文不进入数据库、Outbox、Fake Provider 观测记录或错误码。
+下一阶段为真实 SMTP Provider、SMTP 错误分类以及 Provider 级限流/熔断。
 
 ## 设计文档
 
@@ -93,7 +95,8 @@ make run
 
 当前必须显式配置 `MAIL_PROVIDER=fake`、`MAIL_GRPC_ALLOW_INSECURE=true` 和
 `MAIL_CALLBACK_GRPC_ALLOW_INSECURE=true`；它们只用于本地
-投递编排，不会真实发送邮件，也不构成生产认证。`MAIL_DEV_TENANT_ID` 由进程固定注入，不能
+投递编排。Fake Provider 会完整执行解密、模板渲染与 MIME 构建，但不会建立 SMTP 连接或真实
+发送邮件，也不构成生产认证。`MAIL_DEV_TENANT_ID` 由进程固定注入，不能
 从请求体覆盖。服务启动时只验证 Migration 是否完整，不会由应用副本自动修改 Schema。
 
 也可以只启动或停止其中一个组件：

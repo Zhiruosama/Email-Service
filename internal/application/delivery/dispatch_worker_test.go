@@ -37,6 +37,7 @@ func TestDispatchCommandAndWorkerConfigValidation(t *testing.T) {
 	if _, err := NewDispatchWorker(
 		noCallTransactor{},
 		testEmailProvider{},
+		fixedMaterialBuilder{},
 		constantDeliveryRetry(time.Second),
 		validConfig,
 	); err != nil {
@@ -189,4 +190,24 @@ func (testEmailProvider) Key() string { return "fake" }
 
 func (testEmailProvider) Submit(context.Context, ports.ProviderRequest) ports.ProviderResult {
 	panic("Submit must not be called")
+}
+
+type fixedMaterialBuilder struct {
+	material ports.DeliveryMaterial
+	err      error
+}
+
+func (b fixedMaterialBuilder) Build(
+	context.Context,
+	ports.MessageRecord,
+	ports.StartedDeliveryAttempt,
+) (ports.DeliveryMaterial, error) {
+	if b.material.MIMEMessage == nil && b.err == nil {
+		return ports.DeliveryMaterial{
+			EnvelopeFrom: "sender@example.com",
+			EnvelopeTo:   "recipient@example.com",
+			MIMEMessage:  []byte("Subject: test\r\n\r\nbody"),
+		}, nil
+	}
+	return b.material, b.err
 }

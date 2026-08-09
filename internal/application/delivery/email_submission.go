@@ -244,9 +244,12 @@ func normalizeSubmission(command SubmitEmailCommand) (SubmitEmailCommand, json.R
 	normalized.RecipientEmail = email
 	normalized.Locale = locale.String()
 	normalized.Variables = variables
-	normalized.DispatchDeadline = command.DispatchDeadline.UTC()
+	// PostgreSQL timestamptz has microsecond precision. Normalize before both
+	// encryption and persistence so authenticated payload identity survives a
+	// repository round trip without weakening delivery-time comparisons.
+	normalized.DispatchDeadline = command.DispatchDeadline.UTC().Truncate(time.Microsecond)
 	if command.ScheduledAt != nil {
-		value := command.ScheduledAt.UTC()
+		value := command.ScheduledAt.UTC().Truncate(time.Microsecond)
 		normalized.ScheduledAt = &value
 	}
 	normalized.Metadata = nil

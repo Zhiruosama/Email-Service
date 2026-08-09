@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -243,6 +244,7 @@ func waitForRuntimeDelivery(
 ) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
+	var lastObservation string
 	for time.Now().Before(deadline) {
 		var status string
 		var attempts, pendingOutbox, deliveryEvents int
@@ -259,9 +261,24 @@ WHERE m.id = $1
 			attempts == 1 && pendingOutbox == 0 && deliveryEvents == 4 {
 			return
 		}
+		if err == nil {
+			lastObservation = fmt.Sprintf(
+				"status=%s attempts=%d pending_outbox=%d delivery_events=%d",
+				status,
+				attempts,
+				pendingOutbox,
+				deliveryEvents,
+			)
+		} else {
+			lastObservation = "query_error=" + err.Error()
+		}
 		time.Sleep(25 * time.Millisecond)
 	}
-	t.Fatalf("message %s did not traverse Scheduler/Relay/Consumer/Fake Provider", messageID)
+	t.Fatalf(
+		"message %s did not traverse Scheduler/Relay/Consumer/Fake Provider: %s",
+		messageID,
+		lastObservation,
+	)
 }
 
 type runtimeCallbackObservation struct {

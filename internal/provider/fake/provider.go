@@ -16,7 +16,18 @@ type Handler func(context.Context, ports.ProviderRequest) ports.ProviderResult
 type Provider struct {
 	mu       sync.Mutex
 	handler  Handler
-	requests []ports.ProviderRequest
+	requests []RequestObservation
+}
+
+// RequestObservation deliberately excludes addresses and MIME bytes so the
+// test Provider cannot become a second plaintext retention store.
+type RequestObservation struct {
+	AttemptID          string
+	MessageID          string
+	TenantID           string
+	AttemptNumber      uint32
+	DispatchGeneration uint64
+	MaterialBytes      int
 }
 
 var _ ports.EmailProvider = (*Provider)(nil)
@@ -32,7 +43,14 @@ func (p *Provider) Submit(
 	request ports.ProviderRequest,
 ) ports.ProviderResult {
 	p.mu.Lock()
-	p.requests = append(p.requests, request)
+	p.requests = append(p.requests, RequestObservation{
+		AttemptID:          request.AttemptID,
+		MessageID:          request.MessageID,
+		TenantID:           request.TenantID,
+		AttemptNumber:      request.AttemptNumber,
+		DispatchGeneration: request.DispatchGeneration,
+		MaterialBytes:      len(request.Material.MIMEMessage),
+	})
 	handler := p.handler
 	p.mu.Unlock()
 
@@ -45,10 +63,10 @@ func (p *Provider) Submit(
 	}
 }
 
-func (p *Provider) Requests() []ports.ProviderRequest {
+func (p *Provider) Requests() []RequestObservation {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	requests := make([]ports.ProviderRequest, len(p.requests))
+	requests := make([]RequestObservation, len(p.requests))
 	copy(requests, p.requests)
 	return requests
 }

@@ -14,6 +14,8 @@ var (
 	ErrTemplateVariables        = errors.New("template variables rejected")
 	ErrSenderIdentityNotAllowed = errors.New("sender identity not allowed")
 	ErrPayloadProtection        = errors.New("payload protection failure")
+	ErrPayloadKeyUnavailable    = errors.New("payload key is unavailable")
+	ErrPayloadAuthentication    = errors.New("payload authentication failed")
 	ErrInvalidProtectedPayload  = errors.New("invalid protected payload")
 )
 
@@ -65,4 +67,5 @@ func (p ProtectedPayload) Validate() error {
 type PayloadProtector interface {
 	Fingerprint([]byte) [32]byte
 	Seal(context.Context, string, []byte) (ProtectedPayload, error)
+	Open(context.Context, string, ProtectedPayload) ([]byte, error)
 }

@@ -24,6 +24,7 @@ type ProviderRequest struct {
 	DispatchGeneration  uint64
 	Category            EmailCategory
 	DuplicateRiskPolicy DuplicateRiskPolicy
+	Material            DeliveryMaterial
 }
 
 func (r ProviderRequest) Validate() error {
@@ -47,6 +48,9 @@ func (r ProviderRequest) Validate() error {
 	}
 	if !r.DuplicateRiskPolicy.Valid() {
 		return fmt.Errorf("%w: unknown duplicate risk policy %q", ErrInvalidProviderRequest, r.DuplicateRiskPolicy)
+	}
+	if err := r.Material.Validate(); err != nil {
+		return fmt.Errorf("%w: delivery material is invalid", ErrInvalidProviderRequest)
 	}
 	return nil
 }

@@ -64,8 +64,33 @@ func TestProtectorSealUsesRandomizedAuthenticatedEncryption(t *testing.T) {
 	if !bytes.Equal(decrypted, plaintext) {
 		t.Fatalf("decrypted payload = %q, want %q", decrypted, plaintext)
 	}
+	opened, err := protector.Open(context.Background(), "tenant/message", first)
+	if err != nil {
+		t.Fatalf("open protected payload: %v", err)
+	}
+	if !bytes.Equal(opened, plaintext) {
+		t.Fatalf("opened payload = %q, want %q", opened, plaintext)
+	}
+	first.Ciphertext[len(first.Ciphertext)-1] ^= 0xff
+	if _, err := protector.Open(context.Background(), "tenant/message", first); !errors.Is(err, ports.ErrPayloadAuthentication) {
+		t.Fatalf("tampered payload error = %v, want ErrPayloadAuthentication", err)
+	}
 	if _, err := aead.Open(nil, first.Ciphertext[:nonceSize], first.Ciphertext[nonceSize:], []byte("other")); err == nil {
 		t.Fatal("ciphertext accepted with different associated data")
+	}
+}
+
+func TestProtectorOpenRejectsUnavailableKey(t *testing.T) {
+	protector, err := New("current-key", bytes.Repeat([]byte{1}, KeySize), bytes.Repeat([]byte{2}, KeySize))
+	if err != nil {
+		t.Fatalf("new protector: %v", err)
+	}
+	_, err = protector.Open(context.Background(), "tenant/message", ports.ProtectedPayload{
+		KeyID:      "old-key",
+		Ciphertext: make([]byte, 29),
+	})
+	if !errors.Is(err, ports.ErrPayloadKeyUnavailable) {
+		t.Fatalf("unavailable key error = %v, want ErrPayloadKeyUnavailable", err)
 	}
 }
 
