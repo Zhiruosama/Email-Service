@@ -73,6 +73,9 @@ func classifyFailure(err error) ports.ProviderResult {
 		}
 		return failed(category, statusCode(exchange), true)
 	}
+	if exchange.StatusCode == 503 {
+		return failed(message.FailureValidation, "SMTP_PROTOCOL_503", false)
+	}
 	if exchange.StatusCode >= 500 && exchange.StatusCode <= 599 {
 		category := message.FailureProviderDown
 		switch exchange.Phase {

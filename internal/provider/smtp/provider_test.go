@@ -49,6 +49,14 @@ func TestProviderClassifiesSMTPOutcomes(t *testing.T) {
 			wantRetryable: false,
 		},
 		{
+			name:          "bad command sequence is not a recipient rejection",
+			err:           &ExchangeError{Phase: PhaseRecipient, StatusCode: 503},
+			wantOutcome:   ports.ProviderOutcomeFailed,
+			wantCategory:  message.FailureValidation,
+			wantCode:      "SMTP_PROTOCOL_503",
+			wantRetryable: false,
+		},
+		{
 			name:          "content rejected after known final response",
 			err:           &ExchangeError{Phase: PhaseDataCommit, StatusCode: 554},
 			wantOutcome:   ports.ProviderOutcomeFailed,

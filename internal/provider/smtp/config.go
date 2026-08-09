@@ -69,6 +69,9 @@ func (c Config) Validate() error {
 	if !validBareAddress(c.FromAddress) {
 		return invalidConfig("from address must be one bare email address")
 	}
+	if strings.EqualFold(c.Host, "smtp.qq.com") && !strings.EqualFold(c.Username, c.FromAddress) {
+		return invalidConfig("QQ SMTP from address must match the authentication username")
+	}
 	if len(c.FromName) > 256 || strings.ContainsAny(c.FromName, "\r\n") {
 		return invalidConfig("from name is invalid")
 	}

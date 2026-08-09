@@ -146,6 +146,11 @@ Composition Root 可显式选择 Fake 或 SMTP；SMTP Adapter 通过 implicit TL
 `SUBMISSION_UNKNOWN`。Provider 采用按需连接且不参与启动 readiness；连接复用、限流、熔断、
 舱壁和 Provider Router 仍待后续阶段接入。
 
+09-A2B 已通过双重显式授权的真实 QQ SMTP smoke test，验证 `smtp.qq.com:465` implicit TLS、
+AUTH LOGIN、单收件人 Envelope、multipart MIME DATA 和最终成功响应。该结果只将 Message 推进
+到 `PROVIDER_ACCEPTED`；SMTP 接受不等于最终进入 Inbox，后续送达/退信仍需要 Provider 事件或
+业务侧观察。
+
 ### 3.5 Provider Router
 
 路由输入：

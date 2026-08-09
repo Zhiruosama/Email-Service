@@ -71,7 +71,7 @@
 - 已完成：implicit TLS SMTP Provider 与 LOGIN/PLAIN 授权；
 - 已完成：QQ SMTP 配置加载与运行时显式 Provider 选择；
 - 已完成：协议阶段超时、4xx/5xx 与 DATA 不确定结果分类；
-- 待人工验证：双重显式授权的 QQ SMTP smoke test；
+- 已完成：双重显式授权的 QQ SMTP smoke test；
 - Provider 级限速；
 - 熔断和舱壁；
 - Retry Scheduler；

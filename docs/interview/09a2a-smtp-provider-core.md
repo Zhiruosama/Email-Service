@@ -94,6 +94,7 @@ Provider 再转换成稳定领域 Failure：
 | 450/452 暂时容量压力 | `RATE_LIMITED` | 是 | 同上 |
 | AUTH 5xx | `AUTHENTICATION` | 否 | `PERMANENTLY_FAILED` |
 | MAIL FROM 5xx | `VALIDATION` | 否 | `PERMANENTLY_FAILED` |
+| 503 Bad sequence of commands | `VALIDATION` | 否 | `PERMANENTLY_FAILED` |
 | RCPT TO 5xx | `RECIPIENT_REJECTED` | 否 | `PERMANENTLY_FAILED` |
 | DATA 明确 5xx | `CONTENT_REJECTED` | 否 | `PERMANENTLY_FAILED` |
 | DATA 最终响应前断线 | `SUBMISSION_UNKNOWN` | 否 | `SUBMISSION_UNKNOWN` |
@@ -136,6 +137,10 @@ SMTP 配置只在选择 `smtp` 时要求存在。构造 Provider 不连接服务
 当前配置包括 host、port、security、auth method、username、auth code、from address/name 和
 session timeout。Provider 还会验证 MIME Envelope From 必须等于已配置身份，防止数据库内容或
 错误装配绕过发件身份授权。
+
+对于 `smtp.qq.com`，配置还要求 `MAIL_SMTP_FROM_ADDRESS` 与 `MAIL_SMTP_USERNAME` 相同。
+通用 SMTP 可能允许已验证 alias，但 QQ 的客户端配置要求认证账户与发件地址一致；在本地启动
+边界拒绝不一致配置，比等到 RCPT 阶段收到模糊的 503 更容易定位，也避免无意义地反复认证。
 
 ## 8. 双重保护的真实测试
 
@@ -182,8 +187,9 @@ make migrate-validate
 go test -tags=real_smtp ./internal/provider/smtp -run 'TestReal' -count=1
 ```
 
-最后一条只证明带 tag 的测试能够编译、固定 MIME 测试通过且真实发信默认跳过；本阶段没有声称
-QQ SMTP 已真实接受邮件。
+09-A2A 完成时，最后一条只证明带 tag 的测试能够编译、固定 MIME 测试通过且真实发信默认跳过。
+随后 09-A2B 在人工显式开启开关后完成真实 QQ SMTP 接受验证，排障和证据记录见
+[QQ SMTP 真实验证](09a2b-qq-smtp-smoke.md)。
 
 ## 10. 面试表达与下一步
 
@@ -214,7 +220,6 @@ Provider 短暂不可达应由 durable queue 和数据库重试吸收。若让�
 
 ### 尚未解决
 
-- 需要用户明确确认后执行一次真实 QQ SMTP smoke test；
 - Provider/credential 粒度并发限制、Token Bucket 和熔断器；
 - 有界连接池、NOOP 健康检查和 idle connection 回收；
 - enhanced status code（如 4.7.x）与 QQ 特有错误的细化映射；

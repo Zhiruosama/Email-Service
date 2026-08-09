@@ -30,7 +30,10 @@ multipart/alternative MIME，明文不进入数据库、Outbox、Fake Provider �
 SMTP Provider 核心也已完成：支持 implicit TLS、LOGIN/PLAIN 授权、阶段化超时和 4xx/5xx
 错误归一化，并把 DATA 最终响应丢失建模为 `SUBMISSION_UNKNOWN`。Composition Root 可显式选择
 `fake` 或 `smtp`，普通测试永远不会连接真实服务器。下一步先由人工显式执行一次 QQ SMTP
-smoke test，再实现 Provider 级限流、熔断与并发舱壁。
+smoke test，再实现 Provider 级限流、熔断与并发舱壁。QQ SMTP smoke test 现已通过：真实
+implicit TLS、AUTH LOGIN、Envelope、MIME DATA 和最终接受响应均已验证；这只证明 SMTP Server
+接受，不等同于系统可自动证明最终进入收件箱。本次测试邮件已由人工确认出现在普通收件箱，
+中文发件名称、Subject 和正文显示正常。下一阶段进入 09-B Provider 级限流、熔断与并发舱壁。
 
 ## 设计文档
 

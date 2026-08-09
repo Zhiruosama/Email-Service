@@ -39,6 +39,12 @@ func TestConfigValidation(t *testing.T) {
 			}
 		})
 	}
+	qqConfig := validTestConfig()
+	qqConfig.Host = "smtp.qq.com"
+	qqConfig.FromAddress = "alias@example.com"
+	if err := qqConfig.Validate(); !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("QQ sender mismatch error = %v, want ErrInvalidConfig", err)
+	}
 }
 
 func TestConfigErrorsDoNotLeakAuthorizationCode(t *testing.T) {
