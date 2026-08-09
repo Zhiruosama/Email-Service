@@ -29,7 +29,7 @@ Mail Service 从零到可上线的每一个开发阶段。
 | 08-A2 | Submission/Query gRPC Adapter | 已完成 | [gRPC Submission/Query](08a2-grpc-submission-query.md) |
 | 08-B1 | Delivery Event Journal 与通知事实 | 已完成 | [Delivery Event Journal](08b1-delivery-event-journal.md) |
 | 08-B2A | Notification Worker 核心与 gRPC Callback Client | 已完成 | [Notification Worker 与 gRPC Client](08b2a-notification-worker-grpc-client.md) |
-| 08-B2B | Lifecycle Consumer、通知重试与 DLQ | 未开始 | 完成后新增 |
+| 08-B2B | Lifecycle Consumer、通知重试与 DLQ | 已完成 | [Lifecycle Consumer 与通知可靠性](08b2b-lifecycle-consumer-runtime.md) |
 | 09 | SMTP Provider、重试与熔断 | 未开始 | 完成后新增 |
 | 10 | 多租户、模板和生产化 | 未开始 | 完成后新增 |
 
@@ -52,7 +52,8 @@ Mail Service 从零到可上线的每一个开发阶段。
 15. [gRPC Submission/Query 与租户身份边界](08a2-grpc-submission-query.md)
 16. [Delivery Event Journal 与通知事实](08b1-delivery-event-journal.md)
 17. [Notification Worker 核心与 gRPC Callback Client](08b2a-notification-worker-grpc-client.md)
-18. [核心术语速查](glossary.md)
+18. [Lifecycle Consumer、通知重试/DLQ 与运行时装配](08b2b-lifecycle-consumer-runtime.md)
+19. [核心术语速查](glossary.md)
 
 ## 每阶段固定记录结构
 

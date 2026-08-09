@@ -40,3 +40,31 @@ func TestDefaultConfigAndValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestDefaultLifecycleConfigUsesIsolatedTopologyAndBindings(t *testing.T) {
+	t.Parallel()
+	config := DefaultLifecycleConfig("amqp://guest:guest@localhost:5672/", "instance-1")
+	if err := config.Validate(); err != nil {
+		t.Fatalf("lifecycle config rejected: %v", err)
+	}
+	if err := config.ValidateLifecycle(); err != nil {
+		t.Fatalf("lifecycle route contract rejected: %v", err)
+	}
+	if config.Queue != "mail.lifecycle.v1.q" ||
+		config.DeadLetterQueue != "mail.lifecycle.dead.v1.q" ||
+		config.ConnectionName != "mail-notifier-instance-1" ||
+		len(config.AdditionalRoutingKeys) != 1 {
+		t.Fatalf("unexpected lifecycle config: %#v", config)
+	}
+
+	duplicate := config
+	duplicate.AdditionalRoutingKeys = []string{config.RoutingKey}
+	if err := duplicate.Validate(); !errors.Is(err, ErrInvalidConsumerConfig) {
+		t.Fatalf("duplicate routing key error = %v, want ErrInvalidConsumerConfig", err)
+	}
+	missing := config
+	missing.AdditionalRoutingKeys = nil
+	if err := missing.ValidateLifecycle(); !errors.Is(err, ErrInvalidConsumerConfig) {
+		t.Fatalf("missing lifecycle route error = %v, want ErrInvalidConsumerConfig", err)
+	}
+}

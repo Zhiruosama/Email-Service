@@ -11,6 +11,7 @@ import (
 	"time"
 
 	deliveryapp "github.com/Zhiruosama/Email-Service/internal/application/delivery"
+	notificationapp "github.com/Zhiruosama/Email-Service/internal/application/notification"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -25,11 +26,19 @@ type DispatchProcessor interface {
 	Process(context.Context, deliveryapp.DispatchCommand) (deliveryapp.DispatchResult, error)
 }
 
+type NotificationProcessor interface {
+	Process(context.Context, notificationapp.Command) (notificationapp.Result, error)
+}
+
+type deliveryHandler func(context.Context, amqp.Delivery) error
+
 type Consumer struct {
-	config    Config
-	processor DispatchProcessor
-	dial      connectionFactory
-	ready     atomic.Bool
+	config                Config
+	processor             DispatchProcessor
+	notificationProcessor NotificationProcessor
+	handle                deliveryHandler
+	dial                  connectionFactory
+	ready                 atomic.Bool
 }
 
 // Ready reports whether the current connection has declared topology and
@@ -55,7 +64,36 @@ func newConsumer(
 	if err := config.Validate(); err != nil {
 		return nil, err
 	}
-	return &Consumer{config: config, processor: processor, dial: dial}, nil
+	consumer := &Consumer{config: config.clone(), processor: processor, dial: dial}
+	consumer.handle = consumer.handleDelivery
+	return consumer, nil
+}
+
+func NewLifecycle(config Config, processor NotificationProcessor) (*Consumer, error) {
+	return newLifecycleConsumer(config, processor, dialAMQP)
+}
+
+func newLifecycleConsumer(
+	config Config,
+	processor NotificationProcessor,
+	dial connectionFactory,
+) (*Consumer, error) {
+	if processor == nil {
+		panic("rabbitmq consumer: nil notification processor")
+	}
+	if dial == nil {
+		panic("rabbitmq consumer: nil connection factory")
+	}
+	if err := config.ValidateLifecycle(); err != nil {
+		return nil, err
+	}
+	consumer := &Consumer{
+		config:                config.clone(),
+		notificationProcessor: processor,
+		dial:                  dial,
+	}
+	consumer.handle = consumer.handleLifecycleDelivery
+	return consumer, nil
 }
 
 // Run keeps reconnecting until ctx is cancelled. A graceful cancellation
@@ -255,11 +293,27 @@ func (c *Consumer) consumeLane(
 			if !open {
 				return fmt.Errorf("%w: delivery stream closed", ErrConsumerChannel)
 			}
-			if err := c.handleDelivery(ctx, delivery); err != nil {
+			if err := c.handle(ctx, delivery); err != nil {
 				return err
 			}
 		}
 	}
+}
+
+func (c *Consumer) handleLifecycleDelivery(ctx context.Context, delivery amqp.Delivery) error {
+	command, err := ParseLifecycleDelivery(delivery, c.config)
+	if err != nil {
+		return deadLetterDelivery(delivery, "poison lifecycle delivery")
+	}
+
+	_, err = c.notificationProcessor.Process(ctx, command)
+	if err == nil {
+		return acknowledgeDelivery(delivery, "processed lifecycle delivery")
+	}
+	if notificationapp.ClassifyError(err) == notificationapp.ErrorPoison {
+		return deadLetterDelivery(delivery, "poison notification command")
+	}
+	return c.requeueTransient(ctx, delivery, "transient notification failure")
 }
 
 func (c *Consumer) handleDelivery(ctx context.Context, delivery amqp.Delivery) error {
@@ -298,6 +352,35 @@ func (c *Consumer) handleDelivery(ctx context.Context, delivery amqp.Delivery) e
 	// could otherwise retry forever without consuming the delivery budget.
 	if rejectErr := delivery.Reject(true); rejectErr != nil {
 		return fmt.Errorf("%w: requeue transient failure: %v", ErrConsumerAck, rejectErr)
+	}
+	return nil
+}
+
+func acknowledgeDelivery(delivery amqp.Delivery, operation string) error {
+	if err := delivery.Ack(false); err != nil {
+		return fmt.Errorf("%w: acknowledge %s: %v", ErrConsumerAck, operation, err)
+	}
+	return nil
+}
+
+func deadLetterDelivery(delivery amqp.Delivery, operation string) error {
+	if err := delivery.Nack(false, false); err != nil {
+		return fmt.Errorf("%w: dead-letter %s: %v", ErrConsumerAck, operation, err)
+	}
+	return nil
+}
+
+func (c *Consumer) requeueTransient(
+	ctx context.Context,
+	delivery amqp.Delivery,
+	operation string,
+) error {
+	delay := boundedJitter(c.config.TransientRequeueBase, c.config.TransientRequeueCap)
+	if !waitContext(ctx, delay) {
+		return ctx.Err()
+	}
+	if err := delivery.Reject(true); err != nil {
+		return fmt.Errorf("%w: requeue %s: %v", ErrConsumerAck, operation, err)
 	}
 	return nil
 }
@@ -361,7 +444,12 @@ func declareConsumerTopology(connection brokerConnection, config Config) error {
 	); err != nil {
 		return err
 	}
-	return channel.QueueBind(config.Queue, config.RoutingKey, config.Exchange, false, nil)
+	for _, routingKey := range config.routingKeys() {
+		if err := channel.QueueBind(config.Queue, routingKey, config.Exchange, false, nil); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func waitContext(ctx context.Context, delay time.Duration) bool {

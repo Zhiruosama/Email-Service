@@ -8,6 +8,8 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -29,9 +31,11 @@ import (
 func TestRuntimeComposition(t *testing.T) {
 	postgresInstance := postgrescontainer.StartInstance(t)
 	rabbitInstance := rabbitmqcontainer.Start(t)
+	callbackAddress, callbackReceiver := startRuntimeCallbackServer(t)
 	const tenantID = "e0000000-0000-4000-8000-000000000001"
 	config := runtimeIntegrationConfig(postgresInstance.ConnectionString, rabbitInstance.URL)
 	config.SubmissionSecurity.DevelopmentTenantID = tenantID
+	config.Callback.GRPC.Address = callbackAddress
 
 	startupCtx, startupCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	_, err := bootstrap.NewApp(startupCtx, config, discardIntegrationLogger())
@@ -105,6 +109,7 @@ func TestRuntimeComposition(t *testing.T) {
 	}
 	messageID := submitted.Message.MessageId
 	waitForRuntimeDelivery(t, fixturePool, messageID, 15*time.Second)
+	waitForRuntimeCallbacks(t, callbackReceiver, messageID, 15*time.Second)
 
 	queryCtx, cancelQuery := context.WithTimeout(context.Background(), 5*time.Second)
 	queried, err := deliveryv1.NewDeliveryServiceClient(connection).GetEmail(
@@ -177,6 +182,15 @@ func runtimeIntegrationConfig(databaseURL, rabbitURL string) bootstrap.Config {
 	config.Consumer.ReconnectBase = 10 * time.Millisecond
 	config.Consumer.ReconnectCap = 100 * time.Millisecond
 	config.Consumer.ShutdownTimeout = 3 * time.Second
+	config.NotificationWorker.CallbackTimeout = 2 * time.Second
+	config.Callback.AllowInsecure = true
+	config.LifecycleConsumer.LaneCount = 2
+	config.LifecycleConsumer.PrefetchPerLane = 1
+	config.LifecycleConsumer.ReconnectBase = 10 * time.Millisecond
+	config.LifecycleConsumer.ReconnectCap = 100 * time.Millisecond
+	config.LifecycleConsumer.TransientRequeueBase = time.Millisecond
+	config.LifecycleConsumer.TransientRequeueCap = time.Millisecond
+	config.LifecycleConsumer.ShutdownTimeout = 3 * time.Second
 	return config
 }
 
@@ -248,6 +262,115 @@ WHERE m.id = $1
 		time.Sleep(25 * time.Millisecond)
 	}
 	t.Fatalf("message %s did not traverse Scheduler/Relay/Consumer/Fake Provider", messageID)
+}
+
+type runtimeCallbackObservation struct {
+	eventID        string
+	messageID      string
+	idempotencyKey string
+	status         deliveryv1.DeliveryStatus
+	sequence       uint64
+}
+
+type runtimeCallbackReceiver struct {
+	deliveryv1.UnimplementedDeliveryEventReceiverServiceServer
+	mu           sync.Mutex
+	seen         map[string]struct{}
+	latest       map[string]uint64
+	observations map[string]runtimeCallbackObservation
+}
+
+func startRuntimeCallbackServer(t *testing.T) (string, *runtimeCallbackReceiver) {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen for runtime callback: %v", err)
+	}
+	receiver := &runtimeCallbackReceiver{
+		seen:         make(map[string]struct{}),
+		latest:       make(map[string]uint64),
+		observations: make(map[string]runtimeCallbackObservation),
+	}
+	server := grpc.NewServer()
+	deliveryv1.RegisterDeliveryEventReceiverServiceServer(server, receiver)
+	serveResult := make(chan error, 1)
+	go func() { serveResult <- server.Serve(listener) }()
+	t.Cleanup(func() {
+		server.Stop()
+		_ = listener.Close()
+		<-serveResult
+	})
+	return listener.Addr().String(), receiver
+}
+
+func (r *runtimeCallbackReceiver) ReportDeliveryEvent(
+	_ context.Context,
+	request *deliveryv1.ReportDeliveryEventRequest,
+) (*deliveryv1.ReportDeliveryEventResponse, error) {
+	event := request.GetEvent()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	disposition := deliveryv1.EventAckDisposition_EVENT_ACK_DISPOSITION_ACCEPTED
+	if _, duplicate := r.seen[event.GetEventId()]; duplicate {
+		disposition = deliveryv1.EventAckDisposition_EVENT_ACK_DISPOSITION_DUPLICATE
+	} else {
+		r.seen[event.GetEventId()] = struct{}{}
+		if event.GetSequence() <= r.latest[event.GetMessageId()] {
+			disposition = deliveryv1.EventAckDisposition_EVENT_ACK_DISPOSITION_IGNORED_STALE
+		} else {
+			r.latest[event.GetMessageId()] = event.GetSequence()
+		}
+		r.observations[event.GetEventId()] = runtimeCallbackObservation{
+			eventID:        event.GetEventId(),
+			messageID:      event.GetMessageId(),
+			idempotencyKey: event.GetIdempotencyKey(),
+			status:         event.GetStatus(),
+			sequence:       event.GetSequence(),
+		}
+	}
+	return &deliveryv1.ReportDeliveryEventResponse{
+		EventId:     event.GetEventId(),
+		Disposition: disposition,
+	}, nil
+}
+
+func waitForRuntimeCallbacks(
+	t *testing.T,
+	receiver *runtimeCallbackReceiver,
+	messageID string,
+	timeout time.Duration,
+) {
+	t.Helper()
+	wantStatuses := map[uint64]deliveryv1.DeliveryStatus{
+		1: deliveryv1.DeliveryStatus_DELIVERY_STATUS_ACCEPTED,
+		2: deliveryv1.DeliveryStatus_DELIVERY_STATUS_QUEUED,
+		3: deliveryv1.DeliveryStatus_DELIVERY_STATUS_SENDING,
+		4: deliveryv1.DeliveryStatus_DELIVERY_STATUS_PROVIDER_ACCEPTED,
+	}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		receiver.mu.Lock()
+		observed := make(map[uint64]runtimeCallbackObservation)
+		for _, observation := range receiver.observations {
+			if observation.messageID == messageID {
+				observed[observation.sequence] = observation
+			}
+		}
+		receiver.mu.Unlock()
+		if len(observed) == len(wantStatuses) {
+			for sequence, wantStatus := range wantStatuses {
+				observation, ok := observed[sequence]
+				if !ok || observation.eventID == "" ||
+					observation.idempotencyKey != "runtime-full-pipeline" ||
+					observation.status != wantStatus {
+					t.Fatalf("callback sequence %d = %#v, want status %s", sequence, observation, wantStatus)
+				}
+			}
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf("message %s did not deliver all lifecycle callbacks", messageID)
 }
 
 func discardIntegrationLogger() *slog.Logger {

@@ -38,7 +38,7 @@ help:
 	@echo "mq-up        Start the local RabbitMQ container and wait until healthy"
 	@echo "mq-down      Stop RabbitMQ without deleting its data volume"
 	@echo "mq-status    Show RabbitMQ status"
-	@echo "mq-policy-apply Apply the dispatch retry and dead-letter policy"
+	@echo "mq-policy-apply Apply dispatch and lifecycle retry/dead-letter policies"
 	@echo "mq-policy-status Show RabbitMQ policies"
 	@echo "migrate-up   Apply all PostgreSQL migrations"
 	@echo "migrate-down Roll back one PostgreSQL migration"
@@ -142,6 +142,13 @@ mq-policy-apply:
 		mail-dispatch-reliability \
 		'^mail[.]dispatch[.]v1[.]q$$' \
 		'{"dead-letter-exchange":"mail.dead.v1","dead-letter-routing-key":"mail.dispatch.dead.v1","dead-letter-strategy":"at-least-once","overflow":"reject-publish","delivery-limit":20,"delayed-retry-type":"failed","delayed-retry-min":1000,"delayed-retry-max":30000}' \
+		--priority 100 \
+		--apply-to quorum_queues
+	docker compose exec -T rabbitmq rabbitmqctl set_policy \
+		--vhost / \
+		mail-lifecycle-reliability \
+		'^mail[.]lifecycle[.]v1[.]q$$' \
+		'{"dead-letter-exchange":"mail.dead.v1","dead-letter-routing-key":"mail.lifecycle.dead.v1","dead-letter-strategy":"at-least-once","overflow":"reject-publish","delivery-limit":20,"delayed-retry-type":"failed","delayed-retry-min":1000,"delayed-retry-max":30000}' \
 		--priority 100 \
 		--apply-to quorum_queues
 

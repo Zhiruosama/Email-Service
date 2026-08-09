@@ -163,10 +163,32 @@ func getRabbitMQDeliveryWithin(
 
 func applyConsumerReliabilityPolicy(t *testing.T, instance rabbitmqcontainer.Instance) {
 	t.Helper()
+	applyConsumerQueuePolicy(
+		t,
+		instance,
+		"mail-dispatch-reliability",
+		`^mail[.]dispatch[.]v1[.]q$`,
+		mqcontract.RoutingDispatchDead,
+	)
+	applyConsumerQueuePolicy(
+		t,
+		instance,
+		"mail-lifecycle-reliability",
+		`^mail[.]lifecycle[.]v1[.]q$`,
+		mqcontract.RoutingLifecycleDead,
+	)
+}
+
+func applyConsumerQueuePolicy(
+	t *testing.T,
+	instance rabbitmqcontainer.Instance,
+	name, pattern, deadLetterRoutingKey string,
+) {
+	t.Helper()
 	definition := fmt.Sprintf(
 		`{"dead-letter-exchange":%q,"dead-letter-routing-key":%q,"dead-letter-strategy":"at-least-once","overflow":"reject-publish","delivery-limit":20,"delayed-retry-type":"failed","delayed-retry-min":1000,"delayed-retry-max":30000}`,
 		mqcontract.ExchangeDead,
-		mqcontract.RoutingDispatchDead,
+		deadLetterRoutingKey,
 	)
 	rabbitMQCommand(
 		t,
@@ -175,8 +197,8 @@ func applyConsumerReliabilityPolicy(t *testing.T, instance rabbitmqcontainer.Ins
 		"set_policy",
 		"--vhost",
 		"/",
-		"mail-dispatch-reliability",
-		`^mail[.]dispatch[.]v1[.]q$`,
+		name,
+		pattern,
 		definition,
 		"--priority",
 		"100",

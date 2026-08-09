@@ -22,8 +22,10 @@ HMAC 幂等指纹、AES-GCM 加密，以及 Message + Submission + Outbox 同事
 真实纵向测试从 gRPC Submit 跑到 Fake Provider 再由 gRPC Get 查询。Delivery Event Journal
 也已完成，Message、不可变状态历史与 lifecycle Outbox 在同一事务提交，并共享稳定 event ID。
 Notification Worker 核心和 gRPC Callback Client 现已完成：它按 event ID 回查权威 Journal，
-限制回调超时，并把成功、可重试和永久失败转换成稳定语义。下一阶段为 lifecycle RabbitMQ
-Consumer、通知延迟重试、独立 DLQ 与运行时装配。
+限制回调超时，并把成功、可重试和永久失败转换成稳定语义。Lifecycle RabbitMQ Consumer、
+通知延迟重试、独立 DLQ、双 Consumer readiness 与运行时装配也已完成，真实纵向测试能够从
+SubmitEmail 一直运行到四条状态 gRPC Callback。下一阶段为真实 SMTP Provider、MIME 渲染、
+错误分类以及 Provider 级限流/熔断。
 
 ## 设计文档
 
@@ -89,7 +91,8 @@ set +a
 make run
 ```
 
-当前必须显式配置 `MAIL_PROVIDER=fake` 和 `MAIL_GRPC_ALLOW_INSECURE=true`；它们只用于本地
+当前必须显式配置 `MAIL_PROVIDER=fake`、`MAIL_GRPC_ALLOW_INSECURE=true` 和
+`MAIL_CALLBACK_GRPC_ALLOW_INSECURE=true`；它们只用于本地
 投递编排，不会真实发送邮件，也不构成生产认证。`MAIL_DEV_TENANT_ID` 由进程固定注入，不能
 从请求体覆盖。服务启动时只验证 Migration 是否完整，不会由应用副本自动修改 Schema。
 
@@ -111,8 +114,8 @@ make infra-down
 RabbitMQ Management UI 默认为 `http://localhost:15672`，本地账号为
 `email_service / email_service_dev`。
 
-`make mq-up` 和 `make infra-up` 会自动应用 dispatch queue 的 delayed retry、delivery limit
-和 at-least-once dead-letter Policy；可用 `make mq-policy-status` 查看实际策略。
+`make mq-up` 和 `make infra-up` 会自动应用 dispatch/lifecycle queue 的 delayed retry、
+delivery limit 和 at-least-once dead-letter Policy；可用 `make mq-policy-status` 查看实际策略。
 
 Migration 文件校验和真实 PostgreSQL + RabbitMQ 集成测试：
 

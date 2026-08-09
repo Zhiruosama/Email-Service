@@ -283,6 +283,7 @@ type recordingChannel struct {
 	autoAck                    bool
 	consumerTag                string
 	closeDeliveriesWithContext bool
+	bindings                   []string
 }
 
 func (c *recordingChannel) ExchangeDeclare(string, string, bool, bool, bool, bool, amqp.Table) error {
@@ -293,7 +294,8 @@ func (c *recordingChannel) QueueDeclare(string, bool, bool, bool, bool, amqp.Tab
 	return amqp.Queue{}, nil
 }
 
-func (c *recordingChannel) QueueBind(string, string, string, bool, amqp.Table) error {
+func (c *recordingChannel) QueueBind(_ string, key string, _ string, _ bool, _ amqp.Table) error {
+	c.bindings = append(c.bindings, key)
 	return nil
 }
 

@@ -15,9 +15,11 @@ import (
 	"time"
 
 	deliveryapp "github.com/Zhiruosama/Email-Service/internal/application/delivery"
+	notificationapp "github.com/Zhiruosama/Email-Service/internal/application/notification"
 	"github.com/Zhiruosama/Email-Service/internal/application/ports"
 	consumerrabbit "github.com/Zhiruosama/Email-Service/internal/consumer/rabbitmq"
 	publisherabbit "github.com/Zhiruosama/Email-Service/internal/publisher/rabbitmq"
+	"github.com/Zhiruosama/Email-Service/internal/subscriber/grpcsubscriber"
 	"github.com/google/uuid"
 )
 
@@ -48,6 +50,21 @@ type SubmissionSecurityConfig struct {
 	FingerprintKey      []byte
 }
 
+type CallbackConfig struct {
+	GRPC          grpcsubscriber.Config
+	AllowInsecure bool
+}
+
+func (c CallbackConfig) Validate() error {
+	if err := c.GRPC.Validate(); err != nil {
+		return invalidConfig("MAIL_CALLBACK_GRPC_ADDRESS is invalid")
+	}
+	if !c.AllowInsecure {
+		return invalidConfig("MAIL_CALLBACK_GRPC_ALLOW_INSECURE must be explicitly true until callback TLS is implemented")
+	}
+	return nil
+}
+
 type Config struct {
 	InstanceID         string
 	Provider           string
@@ -73,6 +90,10 @@ type Config struct {
 
 	Publisher publisherabbit.Config
 	Consumer  consumerrabbit.Config
+
+	NotificationWorker notificationapp.WorkerConfig
+	Callback           CallbackConfig
+	LifecycleConsumer  consumerrabbit.Config
 }
 
 type environmentLookup func(string) (string, bool)
@@ -102,6 +123,9 @@ func loadConfig(lookup environmentLookup, hostname string) (Config, error) {
 	config := DefaultConfig(databaseURL, rabbitURL, instanceID, provider)
 	config.GRPCListenAddress = environmentOr(lookup, "MAIL_GRPC_LISTEN_ADDRESS", config.GRPCListenAddress)
 	if err := loadSubmissionSecurity(&config, lookup); err != nil {
+		return Config{}, err
+	}
+	if err := loadCallback(&config, lookup); err != nil {
 		return Config{}, err
 	}
 
@@ -161,6 +185,13 @@ func DefaultConfig(databaseURL, rabbitURL, instanceID, provider string) Config {
 		DeliveryRetryCap:  5 * time.Minute,
 		Publisher:         publisherabbit.DefaultConfig(rabbitURL, "mail-publisher-"+instanceID),
 		Consumer:          consumerrabbit.DefaultConfig(rabbitURL, instanceID),
+		NotificationWorker: notificationapp.WorkerConfig{
+			CallbackTimeout: 5 * time.Second,
+		},
+		Callback: CallbackConfig{
+			GRPC: grpcsubscriber.Config{Address: "127.0.0.1:8081"},
+		},
+		LifecycleConsumer: consumerrabbit.DefaultLifecycleConfig(rabbitURL, instanceID),
 	}
 }
 
@@ -216,8 +247,38 @@ func (c Config) Validate() error {
 	if err := c.Consumer.Validate(); err != nil {
 		return fmt.Errorf("%w: RabbitMQ consumer configuration rejected", ErrInvalidConfig)
 	}
-	if c.ShutdownTimeout <= c.Consumer.ShutdownTimeout {
-		return invalidConfig("MAIL_SHUTDOWN_TIMEOUT must exceed consumer shutdown timeout")
+	if err := c.NotificationWorker.Validate(); err != nil {
+		return fmt.Errorf("%w: notification worker configuration rejected", ErrInvalidConfig)
+	}
+	if err := c.Callback.Validate(); err != nil {
+		return err
+	}
+	if err := c.LifecycleConsumer.ValidateLifecycle(); err != nil {
+		return fmt.Errorf("%w: lifecycle RabbitMQ consumer configuration rejected", ErrInvalidConfig)
+	}
+	if c.ShutdownTimeout <= c.Consumer.ShutdownTimeout ||
+		c.ShutdownTimeout <= c.LifecycleConsumer.ShutdownTimeout {
+		return invalidConfig("MAIL_SHUTDOWN_TIMEOUT must exceed both consumer shutdown timeouts")
+	}
+	return nil
+}
+
+func loadCallback(config *Config, lookup environmentLookup) error {
+	address, err := requiredEnvironment(lookup, "MAIL_CALLBACK_GRPC_ADDRESS")
+	if err != nil {
+		return err
+	}
+	insecureValue, err := requiredEnvironment(lookup, "MAIL_CALLBACK_GRPC_ALLOW_INSECURE")
+	if err != nil {
+		return err
+	}
+	allowInsecure, err := strconv.ParseBool(insecureValue)
+	if err != nil {
+		return invalidConfig("MAIL_CALLBACK_GRPC_ALLOW_INSECURE must be a boolean")
+	}
+	config.Callback = CallbackConfig{
+		GRPC:          grpcsubscriber.Config{Address: address},
+		AllowInsecure: allowInsecure,
 	}
 	return nil
 }
@@ -351,6 +412,8 @@ func applyEnvironmentOverrides(config *Config, lookup environmentLookup) error {
 		{"MAIL_DELIVERY_RETRY_BASE", &config.DeliveryRetryBase},
 		{"MAIL_DELIVERY_RETRY_CAP", &config.DeliveryRetryCap},
 		{"MAIL_CONSUMER_SHUTDOWN_TIMEOUT", &config.Consumer.ShutdownTimeout},
+		{"MAIL_CALLBACK_TIMEOUT", &config.NotificationWorker.CallbackTimeout},
+		{"MAIL_LIFECYCLE_CONSUMER_SHUTDOWN_TIMEOUT", &config.LifecycleConsumer.ShutdownTimeout},
 	}
 	for _, field := range durations {
 		if err := overrideDuration(lookup, field.name, field.target); err != nil {
@@ -369,6 +432,8 @@ func applyEnvironmentOverrides(config *Config, lookup environmentLookup) error {
 		{"MAIL_PUBLISHER_CHANNELS", &config.Publisher.ChannelPoolSize},
 		{"MAIL_CONSUMER_LANES", &config.Consumer.LaneCount},
 		{"MAIL_CONSUMER_PREFETCH", &config.Consumer.PrefetchPerLane},
+		{"MAIL_LIFECYCLE_CONSUMER_LANES", &config.LifecycleConsumer.LaneCount},
+		{"MAIL_LIFECYCLE_CONSUMER_PREFETCH", &config.LifecycleConsumer.PrefetchPerLane},
 	}
 	for _, field := range uint32s {
 		if err := overrideUint32(lookup, field.name, field.target); err != nil {

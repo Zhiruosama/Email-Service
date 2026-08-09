@@ -11,15 +11,18 @@ import (
 	deliveryv1 "github.com/Zhiruosama/Email-Service/gen/go/mailservice/delivery/v1"
 	"github.com/Zhiruosama/Email-Service/internal/api/grpcapi"
 	deliveryapp "github.com/Zhiruosama/Email-Service/internal/application/delivery"
+	notificationapp "github.com/Zhiruosama/Email-Service/internal/application/notification"
 	"github.com/Zhiruosama/Email-Service/internal/application/ports"
 	consumerrabbit "github.com/Zhiruosama/Email-Service/internal/consumer/rabbitmq"
 	providerfake "github.com/Zhiruosama/Email-Service/internal/provider/fake"
 	publisherabbit "github.com/Zhiruosama/Email-Service/internal/publisher/rabbitmq"
 	payloadsecurity "github.com/Zhiruosama/Email-Service/internal/security/payload"
 	postgresstore "github.com/Zhiruosama/Email-Service/internal/storage/postgres"
+	"github.com/Zhiruosama/Email-Service/internal/subscriber/grpcsubscriber"
 	templatecatalog "github.com/Zhiruosama/Email-Service/internal/template/catalog"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
@@ -29,15 +32,17 @@ var (
 )
 
 type App struct {
-	config    Config
-	logger    *slog.Logger
-	pool      *pgxpool.Pool
-	publisher *publisherabbit.Publisher
-	consumer  *consumerrabbit.Consumer
-	endpoint  *grpcEndpoint
-	scheduler *poller
-	relay     *poller
-	readiness *readinessMonitor
+	config            Config
+	logger            *slog.Logger
+	pool              *pgxpool.Pool
+	publisher         *publisherabbit.Publisher
+	consumer          *consumerrabbit.Consumer
+	lifecycleConsumer *consumerrabbit.Consumer
+	subscriber        *grpcsubscriber.Client
+	endpoint          *grpcEndpoint
+	scheduler         *poller
+	relay             *poller
+	readiness         *readinessMonitor
 
 	mu        sync.Mutex
 	runCalled bool
@@ -104,6 +109,31 @@ func NewApp(ctx context.Context, config Config, logger *slog.Logger) (*App, erro
 	if err != nil {
 		return nil, fmt.Errorf("%w: create RabbitMQ consumer", ErrStartup)
 	}
+	subscriber, err := grpcsubscriber.Dial(config.Callback.GRPC, insecure.NewCredentials())
+	if err != nil {
+		return nil, fmt.Errorf("%w: create gRPC callback client", ErrStartup)
+	}
+	cleanupSubscriber := true
+	defer func() {
+		if cleanupSubscriber {
+			_ = subscriber.Close()
+		}
+	}()
+	notificationWorker, err := notificationapp.NewWorker(
+		postgresstore.NewDeliveryEventRepository(pool),
+		subscriber,
+		config.NotificationWorker,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("%w: create notification worker", ErrStartup)
+	}
+	lifecycleConsumer, err := consumerrabbit.NewLifecycle(
+		config.LifecycleConsumer,
+		notificationWorker,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("%w: create lifecycle RabbitMQ consumer", ErrStartup)
+	}
 	protector, err := payloadsecurity.New(
 		config.SubmissionSecurity.PayloadKeyID,
 		config.SubmissionSecurity.EncryptionKey,
@@ -133,12 +163,14 @@ func NewApp(ctx context.Context, config Config, logger *slog.Logger) (*App, erro
 	}
 
 	app := &App{
-		config:    config,
-		logger:    logger,
-		pool:      pool,
-		publisher: publisher,
-		consumer:  consumer,
-		endpoint:  endpoint,
+		config:            config,
+		logger:            logger,
+		pool:              pool,
+		publisher:         publisher,
+		consumer:          consumer,
+		lifecycleConsumer: lifecycleConsumer,
+		subscriber:        subscriber,
+		endpoint:          endpoint,
 	}
 	app.scheduler = newPoller(
 		"due_message_scheduler",
@@ -162,7 +194,10 @@ func NewApp(ctx context.Context, config Config, logger *slog.Logger) (*App, erro
 	)
 	app.readiness = &readinessMonitor{
 		database: pool,
-		consumer: consumer,
+		consumers: []namedReadinessSource{
+			{name: "rabbitmq_dispatch_consumer", source: consumer},
+			{name: "rabbitmq_lifecycle_consumer", source: lifecycleConsumer},
+		},
 		health:   endpoint.health,
 		logger:   logger,
 		interval: config.HealthInterval,
@@ -170,6 +205,7 @@ func NewApp(ctx context.Context, config Config, logger *slog.Logger) (*App, erro
 	}
 
 	cleanupPublisher = false
+	cleanupSubscriber = false
 	cleanupPool = false
 	return app, nil
 }
@@ -195,6 +231,7 @@ func (a *App) Run(ctx context.Context) error {
 			{name: "scheduler", stage: 1, run: a.scheduler.Run},
 			{name: "outbox_relay", stage: 1, run: a.relay.Run},
 			{name: "rabbitmq_consumer", stage: 2, run: a.consumer.Run},
+			{name: "rabbitmq_lifecycle_consumer", stage: 2, run: a.lifecycleConsumer.Run},
 			{name: "grpc_server", stage: 3, run: a.endpoint.Run},
 		},
 		shutdownTimeout: a.config.ShutdownTimeout,
@@ -223,8 +260,9 @@ func (a *App) Close() error {
 	a.closeOnce.Do(func() {
 		endpointErr := a.endpoint.Close()
 		publisherErr := a.publisher.Close()
+		subscriberErr := a.subscriber.Close()
 		a.pool.Close()
-		a.closeErr = errors.Join(endpointErr, publisherErr)
+		a.closeErr = errors.Join(endpointErr, publisherErr, subscriberErr)
 	})
 	return a.closeErr
 }

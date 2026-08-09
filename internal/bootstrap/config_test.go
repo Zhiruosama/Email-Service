@@ -24,9 +24,13 @@ func TestLoadConfigDefaultsAndOverrides(t *testing.T) {
 		"MAIL_SCHEDULER_BATCH_SIZE":           "64",
 		"MAIL_RELAY_PUBLISH_CONCURRENCY":      "4",
 		"MAIL_CONSUMER_LANES":                 "6",
+		"MAIL_LIFECYCLE_CONSUMER_LANES":       "3",
 		"MAIL_PROVIDER_TIMEOUT":               "12s",
+		"MAIL_CALLBACK_TIMEOUT":               "4s",
 		"MAIL_GRPC_ALLOW_INSECURE":            "true",
 		"MAIL_DEV_TENANT_ID":                  "10000000-0000-4000-8000-000000000001",
+		"MAIL_CALLBACK_GRPC_ADDRESS":          "127.0.0.1:9091",
+		"MAIL_CALLBACK_GRPC_ALLOW_INSECURE":   "true",
 		"MAIL_PAYLOAD_KEY_ID":                 "dev-key-1",
 		"MAIL_PAYLOAD_ENCRYPTION_KEY_BASE64":  testEncryptionKeyBase64,
 		"MAIL_PAYLOAD_FINGERPRINT_KEY_BASE64": testFingerprintKeyBase64,
@@ -46,6 +50,11 @@ func TestLoadConfigDefaultsAndOverrides(t *testing.T) {
 	}
 	if config.Worker.ProviderTimeout != 12*time.Second {
 		t.Fatalf("provider timeout = %s", config.Worker.ProviderTimeout)
+	}
+	if config.NotificationWorker.CallbackTimeout != 4*time.Second ||
+		config.LifecycleConsumer.LaneCount != 3 ||
+		config.Callback.GRPC.Address != "127.0.0.1:9091" {
+		t.Fatalf("notification overrides = %#v/%#v/%#v", config.NotificationWorker, config.LifecycleConsumer, config.Callback)
 	}
 	if config.Publisher.ConnectionName != "mail-publisher-worker-a" ||
 		config.Consumer.ConnectionName != "mail-worker-worker-a" {
@@ -67,6 +76,8 @@ func TestLoadConfigRequiresSecretsWithoutLeakingValues(t *testing.T) {
 		"MAIL_PAYLOAD_KEY_ID",
 		"MAIL_PAYLOAD_ENCRYPTION_KEY_BASE64",
 		"MAIL_PAYLOAD_FINGERPRINT_KEY_BASE64",
+		"MAIL_CALLBACK_GRPC_ADDRESS",
+		"MAIL_CALLBACK_GRPC_ALLOW_INSECURE",
 	}
 	for _, missing := range tests {
 		environment := cloneEnvironment(base)
@@ -99,6 +110,10 @@ func TestConfigRejectsInvalidOverrides(t *testing.T) {
 		{name: "tenant", key: "MAIL_DEV_TENANT_ID", value: "tenant"},
 		{name: "key encoding", key: "MAIL_PAYLOAD_ENCRYPTION_KEY_BASE64", value: "not-secret-key-material"},
 		{name: "same key purpose", key: "MAIL_PAYLOAD_FINGERPRINT_KEY_BASE64", value: testEncryptionKeyBase64},
+		{name: "callback address", key: "MAIL_CALLBACK_GRPC_ADDRESS", value: " bad-address"},
+		{name: "callback insecure acknowledgement", key: "MAIL_CALLBACK_GRPC_ALLOW_INSECURE", value: "false"},
+		{name: "callback timeout", key: "MAIL_CALLBACK_TIMEOUT", value: "0s"},
+		{name: "lifecycle consumer shutdown", key: "MAIL_LIFECYCLE_CONSUMER_SHUTDOWN_TIMEOUT", value: "50s"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -136,6 +151,8 @@ func validConfigEnvironment() map[string]string {
 		"MAIL_PAYLOAD_KEY_ID":                 "dev-key-1",
 		"MAIL_PAYLOAD_ENCRYPTION_KEY_BASE64":  testEncryptionKeyBase64,
 		"MAIL_PAYLOAD_FINGERPRINT_KEY_BASE64": testFingerprintKeyBase64,
+		"MAIL_CALLBACK_GRPC_ADDRESS":          "127.0.0.1:9091",
+		"MAIL_CALLBACK_GRPC_ALLOW_INSECURE":   "true",
 	}
 }
 

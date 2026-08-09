@@ -6,14 +6,16 @@ const (
 	ExchangeEvents = "mail.events.v1"
 	ExchangeDead   = "mail.dead.v1"
 
-	QueueDispatch     = "mail.dispatch.v1.q"
-	QueueLifecycle    = "mail.lifecycle.v1.q"
-	QueueDispatchDead = "mail.dispatch.dead.v1.q"
+	QueueDispatch      = "mail.dispatch.v1.q"
+	QueueLifecycle     = "mail.lifecycle.v1.q"
+	QueueDispatchDead  = "mail.dispatch.dead.v1.q"
+	QueueLifecycleDead = "mail.lifecycle.dead.v1.q"
 
 	RoutingMessageAccepted   = "mail.message.accepted.v1"
 	RoutingStatusChanged     = "mail.message.status.changed.v1"
 	RoutingDispatchRequested = "mail.message.dispatch.requested.v1"
 	RoutingDispatchDead      = "mail.dispatch.dead.v1"
+	RoutingLifecycleDead     = "mail.lifecycle.dead.v1"
 
 	EventMessageAccepted   = "MESSAGE_ACCEPTED"
 	EventStatusChanged     = "MESSAGE_STATUS_CHANGED"

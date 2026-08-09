@@ -238,7 +238,8 @@ mail.events.v1 (durable topic exchange)
 ```
 
 两条队列都是 durable Quorum Queue。派发 Worker 只消费 dispatch queue，不会把状态事件
-误当成发信命令；lifecycle queue 留给后续通知/审计出口。Event ID 使用 AMQP Message ID，
+误当成发信命令；独立 Subscriber Worker 消费 lifecycle queue，并通过 event ID 回查权威
+Delivery Event Journal。Event ID 使用 AMQP Message ID，
 Aggregate ID 使用 Correlation ID，sequence、dispatch generation 和 Outbox publish attempt
 使用类型化 Header。消息体仍然是安全 Outbox JSON，不包含邮件正文。
 
@@ -259,11 +260,12 @@ per-consumer prefetch 并顺序调用 Worker；不同 lane 并行。Delivery tag
 Quorum Queue 增加 `delivery-count` 并执行线性 delayed retry。连接关闭时仍未确认的消息由
 Broker 重投。
 
-`mail.dispatch.v1.q` 的运行 Policy 配置 `delivery-limit=20`、
+`mail.dispatch.v1.q` 与 `mail.lifecycle.v1.q` 分别通过运行 Policy 配置 `delivery-limit=20`、
 `delayed-retry-type=failed`、1s..30s 延迟，以及指向 `mail.dead.v1` 的 at-least-once
 dead lettering。该模式要求 `overflow=reject-publish`。DLQ 为 durable quorum queue，绑定
-`mail.dispatch.dead.v1`。Policy 由 `make mq-policy-apply` 幂等应用，不能与代码 binding 的
-routing key 漂移。
+独立的 `mail.dispatch.dead.v1` 和 `mail.lifecycle.dead.v1`。Policy 由
+`make mq-policy-apply` 幂等应用，不能与代码 binding 的 routing key 漂移。通知进入 lifecycle
+DLQ 不修改邮件投递状态：邮件事实和回调同步结果由不同状态维度表达。
 
 目标按类别隔离时拓扑扩展为：
 
@@ -319,7 +321,7 @@ SMTP 最危险的窗口是服务已提交完整 DATA，但收到最终响应前�
 
 ## 9. DLQ 和人工重放
 
-进入 DLQ 的任务必须：
+进入 dispatch DLQ 的邮件任务必须：
 
 - 已在数据库标记 `DEAD_LETTERED`；
 - 保存最后稳定错误类别和脱敏摘要；
@@ -328,6 +330,9 @@ SMTP 最危险的窗口是服务已提交完整 DATA，但收到最终响应前�
 - 重放时创建新的 Attempt，但保留原 message ID 和审计链；
 - 已过截止时间的验证码禁止重放；
 - payload 已按保留策略清理时禁止重放正文。
+
+进入 lifecycle DLQ 的状态通知不能把邮件改成 `DEAD_LETTERED`。它必须保留 event ID，按
+Journal 对账，并在确认订阅方身份、事件未过保留期后安全重放；重复仍由订阅方 event ID 幂等处理。
 
 ## 10. 故障场景检查
 

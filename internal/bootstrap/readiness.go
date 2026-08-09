@@ -18,12 +18,17 @@ type readinessSource interface {
 }
 
 type readinessMonitor struct {
-	database databasePinger
-	consumer readinessSource
-	health   *health.Server
-	logger   *slog.Logger
-	interval time.Duration
-	timeout  time.Duration
+	database  databasePinger
+	consumers []namedReadinessSource
+	health    *health.Server
+	logger    *slog.Logger
+	interval  time.Duration
+	timeout   time.Duration
+}
+
+type namedReadinessSource struct {
+	name   string
+	source readinessSource
 }
 
 func (m *readinessMonitor) Run(ctx context.Context) error {
@@ -46,8 +51,10 @@ func (m *readinessMonitor) Run(ctx context.Context) error {
 }
 
 func (m *readinessMonitor) check(ctx context.Context) (bool, string) {
-	if !m.consumer.Ready() {
-		return false, "rabbitmq_consumer"
+	for _, consumer := range m.consumers {
+		if !consumer.source.Ready() {
+			return false, consumer.name
+		}
 	}
 	checkCtx, cancel := context.WithTimeout(ctx, m.timeout)
 	err := m.database.Ping(checkCtx)

@@ -13,21 +13,29 @@ import (
 func TestReadinessRequiresConsumerAndDatabase(t *testing.T) {
 	t.Parallel()
 	healthServer := health.NewServer()
-	consumer := &fakeReadinessSource{}
+	dispatchConsumer := &fakeReadinessSource{}
+	lifecycleConsumer := &fakeReadinessSource{}
 	database := &fakeDatabasePinger{}
 	monitor := &readinessMonitor{
 		database: database,
-		consumer: consumer,
+		consumers: []namedReadinessSource{
+			{name: "rabbitmq_dispatch_consumer", source: dispatchConsumer},
+			{name: "rabbitmq_lifecycle_consumer", source: lifecycleConsumer},
+		},
 		health:   healthServer,
 		logger:   discardLogger(),
 		interval: time.Millisecond,
 		timeout:  time.Millisecond,
 	}
 
-	if ready, reason := monitor.check(context.Background()); ready || reason != "rabbitmq_consumer" {
+	if ready, reason := monitor.check(context.Background()); ready || reason != "rabbitmq_dispatch_consumer" {
 		t.Fatalf("initial readiness = %t/%q", ready, reason)
 	}
-	consumer.ready = true
+	dispatchConsumer.ready = true
+	if ready, reason := monitor.check(context.Background()); ready || reason != "rabbitmq_lifecycle_consumer" {
+		t.Fatalf("lifecycle readiness = %t/%q", ready, reason)
+	}
+	lifecycleConsumer.ready = true
 	database.err = errors.New("database unavailable")
 	if ready, reason := monitor.check(context.Background()); ready || reason != "postgresql" {
 		t.Fatalf("database readiness = %t/%q", ready, reason)
