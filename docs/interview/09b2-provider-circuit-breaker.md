@@ -189,7 +189,8 @@ make test-integration
 
 ## 11. 尚未解决
 
-- 熔断状态变化、拒绝次数和恢复耗时 Metrics/Trace；
+- 熔断状态变化和拒绝次数 Metrics 已在 [09-B3](09b3-provider-observability.md) 完成；
+- 进程级 OTel Exporter、Trace 和告警规则；
 - 运维查询、告警和人工强制 open/close；
 - 多实例共享健康状态；
 - 多 Provider/endpoint/credential Router；

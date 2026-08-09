@@ -75,6 +75,8 @@
 - 已完成：单实例 Provider Token Bucket 限速；
 - 已完成：非阻塞 Provider 并发舱壁；
 - 已完成：本地 Provider `CLOSED/OPEN/HALF_OPEN` 熔断器；
+- 已完成：Provider OpenTelemetry 调用、拒绝与熔断指标埋点；
+- 进程级 OpenTelemetry SDK 与 Exporter；
 - Retry Scheduler；
 - DLQ 和安全重放；
 - 终态敏感 payload 清理。

@@ -150,7 +150,10 @@ Composition Root 可显式选择 Fake 或 SMTP；SMTP Adapter 通过 implicit TL
 之前，开放期间不会消耗本地容量；半开只允许一个探针；并用 epoch 拒绝旧在途调用对新状态的
 过期回写。当前进程只有一组 SMTP endpoint/credential，因此一个 Guard 就对应这一隔离单元；
 未来 Provider Router 必须为不同 endpoint/credential 分别持有 Guard。连接复用和 Provider Router
-仍待后续阶段接入。
+仍待后续阶段接入。09-B3 又为 Guard 注入与 SDK 无关的 Observer 端口，由独立 OpenTelemetry
+Adapter 记录外部调用、耗时、本地拒绝、熔断状态与转换；Observer 不包含 Request/MIME，并且
+标签只允许低基数稳定枚举。Composition Root 使用全局 OTel Meter，未配置 SDK/Exporter 时安全
+退化为 no-op；进程级遥测 Pipeline 将在后续统一装配。
 
 09-A2B 已通过双重显式授权的真实 QQ SMTP smoke test，验证 `smtp.qq.com:465` implicit TLS、
 AUTH LOGIN、单收件人 Envelope、multipart MIME DATA 和最终成功响应。该结果只将 Message 推进

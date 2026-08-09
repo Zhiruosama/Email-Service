@@ -177,11 +177,11 @@ func TestCircuitIgnoresStaleInFlightResultAfterOpening(t *testing.T) {
 		t.Fatalf("newCircuitBreaker() error = %v", err)
 	}
 	now := time.Unix(1_700_000_000, 0)
-	failing, admitted := breaker.acquire(now)
+	failing, admitted, _ := breaker.acquire(now)
 	if !admitted {
 		t.Fatal("failing call was not admitted")
 	}
-	staleSuccess, admitted := breaker.acquire(now)
+	staleSuccess, admitted, _ := breaker.acquire(now)
 	if !admitted {
 		t.Fatal("second closed call was not admitted")
 	}
@@ -258,7 +258,7 @@ func recordDirect(
 	result ports.ProviderResult,
 ) {
 	t.Helper()
-	ticket, admitted := breaker.acquire(now)
+	ticket, admitted, _ := breaker.acquire(now)
 	if !admitted {
 		t.Fatal("closed circuit did not admit call")
 	}

@@ -36,7 +36,10 @@ implicit TLS、AUTH LOGIN、Envelope、MIME DATA 和最终接受响应均已验�
 Token Bucket：过载请求不会堆在进程内，而是返回稳定、可重试的失败并回到持久化调度链路。
 09-B2 又完成本地 Provider 熔断器：连续基础设施故障达到阈值后进入 `OPEN`，冷却到期只放行
 一个 `HALF_OPEN` 探针，成功恢复、失败重新打开；认证失败会立即熔断。下一阶段进入 Provider
-可观测性与恢复运维能力。
+可观测性与恢复运维能力。09-B3 现已完成 Provider OpenTelemetry Metrics 埋点：区分真实外部
+调用、局部拒绝、熔断状态和状态转换，并通过标签白名单阻止邮箱、消息 ID、错误原文和凭据进入
+时序。当前只完成 Instrumentation；进程级 OTel SDK、OTLP/Prometheus Exporter 和优雅关闭属于
+下一阶段。
 
 ## 设计文档
 

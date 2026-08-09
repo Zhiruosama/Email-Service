@@ -15,6 +15,7 @@ import (
 	"github.com/Zhiruosama/Email-Service/internal/application/ports"
 	consumerrabbit "github.com/Zhiruosama/Email-Service/internal/consumer/rabbitmq"
 	"github.com/Zhiruosama/Email-Service/internal/content/mimebuilder"
+	providermetrics "github.com/Zhiruosama/Email-Service/internal/observability/providermetrics"
 	providerfake "github.com/Zhiruosama/Email-Service/internal/provider/fake"
 	providerresilience "github.com/Zhiruosama/Email-Service/internal/provider/resilience"
 	providersmtp "github.com/Zhiruosama/Email-Service/internal/provider/smtp"
@@ -25,6 +26,7 @@ import (
 	"github.com/Zhiruosama/Email-Service/internal/subscriber/grpcsubscriber"
 	templatecatalog "github.com/Zhiruosama/Email-Service/internal/template/catalog"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -252,7 +254,15 @@ func newEmailProvider(config Config) (ports.EmailProvider, ports.SenderIdentity,
 		if err != nil {
 			return nil, ports.SenderIdentity{}, fmt.Errorf("%w: create SMTP provider", ErrStartup)
 		}
-		guarded, err := providerresilience.New(provider, config.ProviderResilience)
+		observer, err := providermetrics.New(otel.Meter(providermetrics.InstrumentationScope))
+		if err != nil {
+			return nil, ports.SenderIdentity{}, fmt.Errorf("%w: create provider metrics", ErrStartup)
+		}
+		guarded, err := providerresilience.NewWithObserver(
+			provider,
+			config.ProviderResilience,
+			observer,
+		)
 		if err != nil {
 			return nil, ports.SenderIdentity{}, fmt.Errorf("%w: create provider resilience guard", ErrStartup)
 		}

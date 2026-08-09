@@ -121,6 +121,24 @@ mail_sensitive_payload_pending_cleanup
 
 禁止使用 tenant ID、message ID、完整错误消息和邮箱作为 Metrics Label。
 
+09-B3 已先落地 Provider 可靠性指标：
+
+| Instrument | 类型 | 安全属性 |
+| --- | --- | --- |
+| `mail.provider.calls` | Counter | `provider,outcome,failure_category` |
+| `mail.provider.duration` | Histogram（秒） | `provider,outcome,failure_category` |
+| `mail.provider.rejections` | Counter | `provider,reason` |
+| `mail.provider.circuit.state` | Gauge | `provider`；值为 CLOSED=0、HALF_OPEN=1、OPEN=2 |
+| `mail.provider.circuit.transitions` | Counter | `provider,from,to,reason` |
+
+`calls/duration` 只记录真正进入外部 Provider Adapter 的调用；context、舱壁、Token Bucket 和熔断
+拒绝进入独立 `rejections`，避免把本地快速拒绝混进 SMTP 延迟分布。未知枚举在 Adapter 边界归一化
+为 `unknown`，不会把原始动态字符串写入 Label。熔断 epoch 仅用于抑制乱序 Gauge 写入，不作为标签。
+
+当前已完成 OTel Instrumentation 和基于 ManualReader 的契约测试；主进程尚未配置 SDK Resource、
+Reader、OTLP/Prometheus Exporter 与 Shutdown，因此默认全局 Meter Provider 下指标为 no-op。生产
+遥测 Pipeline 必须作为进程级能力统一装配，不能由 Provider 私自创建网络连接。
+
 ### 6.3 Logs
 
 允许字段：

@@ -49,6 +49,13 @@ type circuitTicket struct {
 	halfOpen bool
 }
 
+type circuitTransition struct {
+	from   CircuitState
+	to     CircuitState
+	reason CircuitTransitionReason
+	epoch  uint64
+}
+
 type circuitObservation uint8
 
 const (
@@ -78,28 +85,35 @@ func newCircuitBreaker(config CircuitConfig) (*circuitBreaker, error) {
 
 // acquire returns a logical admission ticket. CLOSED allows normal calls;
 // HALF_OPEN permits one probe; OPEN rejects until its cooldown has elapsed.
-func (b *circuitBreaker) acquire(now time.Time) (circuitTicket, bool) {
+func (b *circuitBreaker) acquire(now time.Time) (circuitTicket, bool, *circuitTransition) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	if b.state == CircuitOpen {
 		if now.Before(b.openUntil) {
-			return circuitTicket{}, false
+			return circuitTicket{}, false, nil
+		}
+		transition := &circuitTransition{
+			from:   CircuitOpen,
+			to:     CircuitHalfOpen,
+			reason: TransitionCooldownElapsed,
 		}
 		b.state = CircuitHalfOpen
 		b.epoch++
-		b.halfOpenInFlight = false
+		transition.epoch = b.epoch
+		b.halfOpenInFlight = true
+		return circuitTicket{epoch: b.epoch, halfOpen: true}, true, transition
 	}
 
 	if b.state == CircuitHalfOpen {
 		if b.halfOpenInFlight {
-			return circuitTicket{}, false
+			return circuitTicket{}, false, nil
 		}
 		b.halfOpenInFlight = true
-		return circuitTicket{epoch: b.epoch, halfOpen: true}, true
+		return circuitTicket{epoch: b.epoch, halfOpen: true}, true, nil
 	}
 
-	return circuitTicket{epoch: b.epoch}, true
+	return circuitTicket{epoch: b.epoch}, true, nil
 }
 
 // cancel releases an admitted half-open probe that never reached the provider,
@@ -119,32 +133,30 @@ func (b *circuitBreaker) record(
 	ticket circuitTicket,
 	result ports.ProviderResult,
 	now time.Time,
-) {
+) *circuitTransition {
 	observation := classifyCircuitResult(result)
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if ticket.epoch != b.epoch {
-		return
+		return nil
 	}
 
 	if ticket.halfOpen {
 		if b.state != CircuitHalfOpen || !b.halfOpenInFlight {
-			return
+			return nil
 		}
 		b.halfOpenInFlight = false
 		if observation == circuitHealthy {
-			b.close()
-			return
+			return b.close(TransitionProbeSucceeded)
 		}
 		// An ignored invariant result proves neither recovery nor continued
 		// failure. Reopening avoids an unbounded half-open probe loop.
-		b.open(now)
-		return
+		return b.open(now, TransitionProbeFailed)
 	}
 
 	if b.state != CircuitClosed {
-		return
+		return nil
 	}
 	switch observation {
 	case circuitHealthy:
@@ -152,12 +164,13 @@ func (b *circuitBreaker) record(
 	case circuitFailure:
 		b.consecutiveFails++
 		if b.consecutiveFails >= b.config.FailureThreshold {
-			b.open(now)
+			return b.open(now, TransitionFailureThreshold)
 		}
 	case circuitImmediateFailure:
-		b.open(now)
+		return b.open(now, TransitionAuthentication)
 	case circuitIgnored:
 	}
+	return nil
 }
 
 func (b *circuitBreaker) currentState() CircuitState {
@@ -166,20 +179,27 @@ func (b *circuitBreaker) currentState() CircuitState {
 	return b.state
 }
 
-func (b *circuitBreaker) open(now time.Time) {
+func (b *circuitBreaker) open(
+	now time.Time,
+	reason CircuitTransitionReason,
+) *circuitTransition {
+	from := b.state
 	b.state = CircuitOpen
 	b.epoch++
 	b.consecutiveFails = 0
 	b.openUntil = now.Add(b.config.OpenDuration)
 	b.halfOpenInFlight = false
+	return &circuitTransition{from: from, to: CircuitOpen, reason: reason, epoch: b.epoch}
 }
 
-func (b *circuitBreaker) close() {
+func (b *circuitBreaker) close(reason CircuitTransitionReason) *circuitTransition {
+	from := b.state
 	b.state = CircuitClosed
 	b.epoch++
 	b.consecutiveFails = 0
 	b.openUntil = time.Time{}
 	b.halfOpenInFlight = false
+	return &circuitTransition{from: from, to: CircuitClosed, reason: reason, epoch: b.epoch}
 }
 
 func classifyCircuitResult(result ports.ProviderResult) circuitObservation {
