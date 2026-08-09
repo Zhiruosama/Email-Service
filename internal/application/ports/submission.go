@@ -9,11 +9,12 @@ import (
 )
 
 var (
-	ErrTemplateNotFound        = errors.New("template not found")
-	ErrTemplateNotAllowed      = errors.New("template not allowed")
-	ErrTemplateVariables       = errors.New("template variables rejected")
-	ErrPayloadProtection       = errors.New("payload protection failure")
-	ErrInvalidProtectedPayload = errors.New("invalid protected payload")
+	ErrTemplateNotFound         = errors.New("template not found")
+	ErrTemplateNotAllowed       = errors.New("template not allowed")
+	ErrTemplateVariables        = errors.New("template variables rejected")
+	ErrSenderIdentityNotAllowed = errors.New("sender identity not allowed")
+	ErrPayloadProtection        = errors.New("payload protection failure")
+	ErrInvalidProtectedPayload  = errors.New("invalid protected payload")
 )
 
 type ResolveTemplateRequest struct {
@@ -35,6 +36,13 @@ type ResolvedTemplate struct {
 // must pin one immutable published version before message acceptance.
 type TemplateResolver interface {
 	Resolve(context.Context, ResolveTemplateRequest) (ResolvedTemplate, error)
+}
+
+// SubmissionCatalog is the acceptance-time control-plane view. Both template
+// and sender authorization must use the authenticated tenant identity.
+type SubmissionCatalog interface {
+	TemplateResolver
+	AuthorizeSender(context.Context, string, string) error
 }
 
 type ProtectedPayload struct {

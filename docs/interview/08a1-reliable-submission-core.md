@@ -115,8 +115,8 @@ AES-GCM 同时提供：
 AAD 使用 `tenant_id/message_id`。密文即使被复制到另一个租户或任务，也不能通过认证解密。
 每次加密必须生成新 nonce；同一 AES-GCM key 下复用 nonce 会严重破坏安全性。
 
-加密和幂等指纹使用两把独立 32-byte key，因为它们的安全用途不同。当前组件从构造参数
-接收 key，08-A2 才会把安全配置接入 Bootstrap；生产阶段再由 KMS/Vault 提供和轮换。
+加密和幂等指纹使用两把独立 32-byte key，因为它们的安全用途不同。组件从构造参数接收
+key；08-A2 已把 strict base64 密钥配置接入 Bootstrap，生产阶段再由 KMS/Vault 提供和轮换。
 
 ## 6. 为什么 TemplateResolver 属于应用端口
 
@@ -253,7 +253,7 @@ RabbitMQ 命令只携带 message ID、tenant、sequence 和 generation。Worker 
 
 ## 13. 尚未解决
 
-- 08-A2：gRPC Submit/Get Adapter、租户身份注入和标准错误映射；
+- 08-A2 已完成 gRPC Submit/Get Adapter、开发租户身份注入和标准错误映射；生产 mTLS 待实现；
 - Bootstrap 的密钥配置、真实模板目录和 sender identity 授权；
 - Worker 解密 Payload、模板渲染和真实 Provider 请求；
 - Batch、Cancel、ListEvents；

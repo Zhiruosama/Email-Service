@@ -17,8 +17,10 @@ Queue 和按需重连的 RabbitMQ Publisher Adapter；Dispatch Worker、Delivery
 Fake Provider，以及带 Manual ACK、prefetch、延迟重试、DLQ、重连和优雅停机的 RabbitMQ
 Consumer Adapter 也已完成。Composition Root 已将这些组件装配为可运行后台进程，并提供
 动态 gRPC liveness/readiness。可靠受理应用内核也已完成：模板版本固定、规范化 Payload
-HMAC 幂等指纹、AES-GCM 加密，以及 Message + Submission + Outbox 同事务持久化。下一阶段
-为 Submission/Query gRPC Adapter 与租户身份边界。
+HMAC 幂等指纹、AES-GCM 加密，以及 Message + Submission + Outbox 同事务持久化。
+`SubmitEmail/GetEmail` gRPC、固定开发租户身份边界、验证码模板目录和标准错误映射也已接入，
+真实纵向测试从 gRPC Submit 跑到 Fake Provider 再由 gRPC Get 查询。下一阶段为可靠状态通知
+与 AI-Nexus 回调联调。
 
 ## 设计文档
 
@@ -71,6 +73,7 @@ make check-all
 cp .env.example .env
 make infra-up
 make migrate-up
+make db-dev-seed
 make migrate-status
 ```
 
@@ -83,8 +86,9 @@ set +a
 make run
 ```
 
-当前必须显式配置 `MAIL_PROVIDER=fake`；它用于验证投递编排，不会真实发送邮件。服务启动时
-只验证 Migration 是否完整，不会由应用副本自动修改 Schema。
+当前必须显式配置 `MAIL_PROVIDER=fake` 和 `MAIL_GRPC_ALLOW_INSECURE=true`；它们只用于本地
+投递编排，不会真实发送邮件，也不构成生产认证。`MAIL_DEV_TENANT_ID` 由进程固定注入，不能
+从请求体覆盖。服务启动时只验证 Migration 是否完整，不会由应用副本自动修改 Schema。
 
 也可以只启动或停止其中一个组件：
 

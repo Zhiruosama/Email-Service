@@ -13,7 +13,7 @@ PROTO_FILES := $(shell find $(PROTO_DIR) -type f -name '*.proto' | sort)
 PROTOC_GEN_GO := $(shell $(GO) tool -n protoc-gen-go)
 PROTOC_GEN_GO_GRPC := $(shell $(GO) tool -n protoc-gen-go-grpc)
 
-.PHONY: help build run generate buf-generate proto-check proto-format-check proto-lint format test test-integration check check-all infra-up infra-down infra-status db-up db-down db-status mq-up mq-down mq-status mq-policy-apply mq-policy-status migrate-up migrate-down migrate-status migrate-validate
+.PHONY: help build run generate buf-generate proto-check proto-format-check proto-lint format test test-integration check check-all infra-up infra-down infra-status db-up db-down db-status db-dev-seed mq-up mq-down mq-status mq-policy-apply mq-policy-status migrate-up migrate-down migrate-status migrate-validate
 
 help:
 	@echo "build        Build the mail-service binary"
@@ -34,6 +34,7 @@ help:
 	@echo "db-up        Start the local PostgreSQL container and wait until healthy"
 	@echo "db-down      Stop PostgreSQL without deleting its data volume"
 	@echo "db-status    Show PostgreSQL status"
+	@echo "db-dev-seed Seed the fixed local development tenant"
 	@echo "mq-up        Start the local RabbitMQ container and wait until healthy"
 	@echo "mq-down      Stop RabbitMQ without deleting its data volume"
 	@echo "mq-status    Show RabbitMQ status"
@@ -114,6 +115,13 @@ db-down:
 
 db-status:
 	docker compose ps postgres
+
+db-dev-seed:
+	docker compose exec -T postgres psql \
+		--username email_service \
+		--dbname email_service \
+		--set ON_ERROR_STOP=1 \
+		< db/seeds/development.sql
 
 mq-up:
 	RABBITMQ_IMAGE=$(RABBITMQ_IMAGE) \

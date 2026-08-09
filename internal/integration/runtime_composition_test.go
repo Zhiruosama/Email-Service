@@ -3,6 +3,7 @@
 package integration_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -11,10 +12,9 @@ import (
 	"time"
 
 	"github.com/Zhiruosama/Email-Service/db/migrations"
-	"github.com/Zhiruosama/Email-Service/internal/application/delivery"
+	deliveryv1 "github.com/Zhiruosama/Email-Service/gen/go/mailservice/delivery/v1"
 	"github.com/Zhiruosama/Email-Service/internal/bootstrap"
 	"github.com/Zhiruosama/Email-Service/internal/domain/message"
-	postgresstore "github.com/Zhiruosama/Email-Service/internal/storage/postgres"
 	"github.com/Zhiruosama/Email-Service/internal/testkit/postgrescontainer"
 	"github.com/Zhiruosama/Email-Service/internal/testkit/rabbitmqcontainer"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -22,12 +22,16 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestRuntimeComposition(t *testing.T) {
 	postgresInstance := postgrescontainer.StartInstance(t)
 	rabbitInstance := rabbitmqcontainer.Start(t)
+	const tenantID = "e0000000-0000-4000-8000-000000000001"
 	config := runtimeIntegrationConfig(postgresInstance.ConnectionString, rabbitInstance.URL)
+	config.SubmissionSecurity.DevelopmentTenantID = tenantID
 
 	startupCtx, startupCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	_, err := bootstrap.NewApp(startupCtx, config, discardIntegrationLogger())
@@ -44,22 +48,7 @@ func TestRuntimeComposition(t *testing.T) {
 	}
 	t.Cleanup(fixturePool.Close)
 
-	const (
-		tenantID  = "e0000000-0000-4000-8000-000000000001"
-		messageID = "e1000000-0000-4000-8000-000000000001"
-	)
 	insertRepositoryTenant(t, context.Background(), fixturePool, tenantID, "runtime-composition")
-	store := delivery.NewReliableMessageStore(postgresstore.NewTransactionManager(fixturePool))
-	record := newRepositoryRecord(t, recordParams{
-		messageID:      messageID,
-		tenantID:       tenantID,
-		idempotencyKey: "runtime-full-pipeline",
-		fingerprint:    fingerprint(0xe1),
-		now:            time.Now().UTC(),
-	})
-	if _, err := store.Create(context.Background(), record); err != nil {
-		t.Fatalf("create runtime fixture: %v", err)
-	}
 
 	appCtx, cancelApp := context.WithCancel(context.Background())
 	app, err := bootstrap.NewApp(appCtx, config, discardIntegrationLogger())
@@ -71,7 +60,72 @@ func TestRuntimeComposition(t *testing.T) {
 	go func() { runResult <- app.Run(appCtx) }()
 
 	waitForRuntimeHealth(t, app.GRPCAddress(), bootstrap.WorkerHealthService, 10*time.Second)
+	connection, err := grpc.NewClient(
+		app.GRPCAddress(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		cancelApp()
+		t.Fatalf("dial delivery service: %v", err)
+	}
+	t.Cleanup(func() { _ = connection.Close() })
+	variables, err := structpb.NewStruct(map[string]any{
+		"code":              "123456",
+		"purpose":           "LOGIN",
+		"valid_for_seconds": 300,
+	})
+	if err != nil {
+		cancelApp()
+		t.Fatalf("create runtime variables: %v", err)
+	}
+	request := &deliveryv1.SubmitEmailRequest{
+		IdempotencyKey:    "runtime-full-pipeline",
+		Recipient:         &deliveryv1.Recipient{Email: "runtime@example.com"},
+		SenderIdentityKey: "ainexus.default",
+		Content: &deliveryv1.EmailContent{
+			Template:  &deliveryv1.TemplateReference{Key: "verification_code.v1"},
+			Locale:    "zh-CN",
+			Variables: variables,
+		},
+		Category:            deliveryv1.EmailCategory_EMAIL_CATEGORY_CRITICAL,
+		Priority:            9,
+		DispatchDeadline:    timestamppb.New(time.Now().UTC().Add(2 * time.Minute)),
+		DuplicateRiskPolicy: deliveryv1.DuplicateRiskPolicy_DUPLICATE_RISK_POLICY_AVOID_DUPLICATE,
+	}
+	rpcCtx, cancelRPC := context.WithTimeout(context.Background(), 5*time.Second)
+	submitted, err := deliveryv1.NewDeliveryServiceClient(connection).SubmitEmail(rpcCtx, request)
+	cancelRPC()
+	if err != nil {
+		cancelApp()
+		t.Fatalf("submit through gRPC: %v", err)
+	}
+	if submitted.Disposition != deliveryv1.SubmitDisposition_SUBMIT_DISPOSITION_ACCEPTED {
+		cancelApp()
+		t.Fatalf("submit disposition = %s, want ACCEPTED", submitted.Disposition)
+	}
+	messageID := submitted.Message.MessageId
 	waitForRuntimeDelivery(t, fixturePool, messageID, 15*time.Second)
+
+	queryCtx, cancelQuery := context.WithTimeout(context.Background(), 5*time.Second)
+	queried, err := deliveryv1.NewDeliveryServiceClient(connection).GetEmail(
+		queryCtx,
+		&deliveryv1.GetEmailRequest{
+			Selector: &deliveryv1.GetEmailRequest_IdempotencyKey{
+				IdempotencyKey: "runtime-full-pipeline",
+			},
+		},
+	)
+	cancelQuery()
+	if err != nil {
+		cancelApp()
+		t.Fatalf("query through gRPC: %v", err)
+	}
+	if queried.Message.MessageId != messageID ||
+		queried.Message.Status != deliveryv1.DeliveryStatus_DELIVERY_STATUS_PROVIDER_ACCEPTED ||
+		queried.Message.Recipient.MaskedEmail != "r***@example.com" {
+		cancelApp()
+		t.Fatalf("unexpected queried message: %#v", queried.Message)
+	}
 
 	cancelApp()
 	select {
@@ -86,6 +140,13 @@ func TestRuntimeComposition(t *testing.T) {
 
 func runtimeIntegrationConfig(databaseURL, rabbitURL string) bootstrap.Config {
 	config := bootstrap.DefaultConfig(databaseURL, rabbitURL, "runtime-integration", bootstrap.FakeProvider)
+	config.SubmissionSecurity = bootstrap.SubmissionSecurityConfig{
+		AllowInsecureGRPC:   true,
+		DevelopmentTenantID: "e0000000-0000-4000-8000-000000000001",
+		PayloadKeyID:        "runtime-integration-key",
+		EncryptionKey:       bytes.Repeat([]byte{0x31}, 32),
+		FingerprintKey:      bytes.Repeat([]byte{0x42}, 32),
+	}
 	config.GRPCListenAddress = "127.0.0.1:0"
 	config.ShutdownTimeout = 6 * time.Second
 	config.HealthInterval = 100 * time.Millisecond

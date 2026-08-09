@@ -8,13 +8,18 @@ import (
 	"sync"
 	"time"
 
+	deliveryv1 "github.com/Zhiruosama/Email-Service/gen/go/mailservice/delivery/v1"
+	"github.com/Zhiruosama/Email-Service/internal/api/grpcapi"
 	deliveryapp "github.com/Zhiruosama/Email-Service/internal/application/delivery"
 	"github.com/Zhiruosama/Email-Service/internal/application/ports"
 	consumerrabbit "github.com/Zhiruosama/Email-Service/internal/consumer/rabbitmq"
 	providerfake "github.com/Zhiruosama/Email-Service/internal/provider/fake"
 	publisherabbit "github.com/Zhiruosama/Email-Service/internal/publisher/rabbitmq"
+	payloadsecurity "github.com/Zhiruosama/Email-Service/internal/security/payload"
 	postgresstore "github.com/Zhiruosama/Email-Service/internal/storage/postgres"
+	templatecatalog "github.com/Zhiruosama/Email-Service/internal/template/catalog"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
@@ -99,7 +104,30 @@ func NewApp(ctx context.Context, config Config, logger *slog.Logger) (*App, erro
 	if err != nil {
 		return nil, fmt.Errorf("%w: create RabbitMQ consumer", ErrStartup)
 	}
-	endpoint, err := newGRPCEndpoint(config.GRPCListenAddress, 5*time.Second)
+	protector, err := payloadsecurity.New(
+		config.SubmissionSecurity.PayloadKeyID,
+		config.SubmissionSecurity.EncryptionKey,
+		config.SubmissionSecurity.FingerprintKey,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("%w: create payload protector", ErrStartup)
+	}
+	templates := templatecatalog.NewVerificationCatalog(
+		config.SubmissionSecurity.DevelopmentTenantID,
+	)
+	submitter := deliveryapp.NewEmailSubmissionService(transactor, templates, protector)
+	querier := deliveryapp.NewEmailQueryService(postgresstore.NewMessageRepository(pool))
+	deliveryServer := grpcapi.NewDeliveryServer(submitter, querier)
+	endpoint, err := newGRPCEndpoint(
+		config.GRPCListenAddress,
+		5*time.Second,
+		withUnaryInterceptor(grpcapi.FixedDevelopmentTenantInterceptor(
+			config.SubmissionSecurity.DevelopmentTenantID,
+		)),
+		withServiceRegistration(func(registrar grpc.ServiceRegistrar) {
+			deliveryv1.RegisterDeliveryServiceServer(registrar, deliveryServer)
+		}),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("%w: create gRPC endpoint: %v", ErrStartup, err)
 	}

@@ -27,7 +27,30 @@ type grpcEndpoint struct {
 	closeOnce       sync.Once
 }
 
-func newGRPCEndpoint(address string, gracefulTimeout time.Duration) (*grpcEndpoint, error) {
+type grpcEndpointConfig struct {
+	serverOptions []grpc.ServerOption
+	registrations []func(grpc.ServiceRegistrar)
+}
+
+type grpcEndpointOption func(*grpcEndpointConfig)
+
+func withUnaryInterceptor(interceptor grpc.UnaryServerInterceptor) grpcEndpointOption {
+	return func(config *grpcEndpointConfig) {
+		config.serverOptions = append(config.serverOptions, grpc.UnaryInterceptor(interceptor))
+	}
+}
+
+func withServiceRegistration(register func(grpc.ServiceRegistrar)) grpcEndpointOption {
+	return func(config *grpcEndpointConfig) {
+		config.registrations = append(config.registrations, register)
+	}
+}
+
+func newGRPCEndpoint(
+	address string,
+	gracefulTimeout time.Duration,
+	options ...grpcEndpointOption,
+) (*grpcEndpoint, error) {
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
 		return nil, fmt.Errorf("listen on configured gRPC address: %w", err)
@@ -36,8 +59,17 @@ func newGRPCEndpoint(address string, gracefulTimeout time.Duration) (*grpcEndpoi
 	healthServer.SetServingStatus(LivenessHealthService, healthpb.HealthCheckResponse_SERVING)
 	healthServer.SetServingStatus(OverallHealthService, healthpb.HealthCheckResponse_NOT_SERVING)
 	healthServer.SetServingStatus(WorkerHealthService, healthpb.HealthCheckResponse_NOT_SERVING)
-	server := grpc.NewServer()
+	configuration := grpcEndpointConfig{}
+	for _, option := range options {
+		if option != nil {
+			option(&configuration)
+		}
+	}
+	server := grpc.NewServer(configuration.serverOptions...)
 	healthpb.RegisterHealthServer(server, healthServer)
+	for _, register := range configuration.registrations {
+		register(server)
+	}
 	return &grpcEndpoint{
 		server:          server,
 		health:          healthServer,

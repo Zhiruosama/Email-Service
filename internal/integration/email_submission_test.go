@@ -144,6 +144,13 @@ func TestEmailSubmissionIsAtomicIdempotentAndEncrypted(t *testing.T) {
 
 type verificationTemplateResolver struct{}
 
+func (verificationTemplateResolver) AuthorizeSender(_ context.Context, tenantID, senderKey string) error {
+	if tenantID != submissionTenantID || senderKey != "ainexus.default" {
+		return ports.ErrSenderIdentityNotAllowed
+	}
+	return nil
+}
+
 func (verificationTemplateResolver) Resolve(
 	_ context.Context,
 	request ports.ResolveTemplateRequest,

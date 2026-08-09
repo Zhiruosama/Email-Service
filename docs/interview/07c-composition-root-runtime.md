@@ -168,8 +168,8 @@ RabbitMQ Consumer 在 topology 声明和 lanes 启动后将 `Ready()` 设为 tru
 Provider 故障暂时不影响进程 readiness：邮件仍可持久化和稍后重试。后续有真实 Provider
 Router 后，Provider health 会进入路由、熔断和降级，而不是粗暴杀死整个 Submission API。
 
-当前 gRPC Endpoint 只注册 Health Service，没有注册 Submission/Query RPC；本地使用
-plaintext，生产 mTLS 仍属于后续安全阶段。
+07-C 当时 gRPC Endpoint 只注册 Health Service；08-A2 已注册 Submit/Get。当前仍使用明确配置
+的 plaintext 开发身份，生产 mTLS 仍属于后续安全阶段。
 
 ## 8. main 的职责
 
@@ -310,7 +310,7 @@ Scheduler/Relay 的 `SKIP LOCKED` 和 Outbox lease、Consumer 的 competing cons
 
 ## 14. 尚未解决
 
-- Submission、Query、Cancel gRPC handler 尚未注册；当前 gRPC 仅提供 Health；
+- Batch、Cancel、ListEvents gRPC handler 尚未实现；
 - lifecycle 状态事件的通知 Consumer 与 AI-Nexus 联调；
 - 真实 SMTP、Payload 解密、模板渲染与 MIME；
 - TLS/mTLS、认证授权和密钥管理；

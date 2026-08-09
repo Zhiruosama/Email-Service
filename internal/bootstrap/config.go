@@ -3,6 +3,8 @@
 package bootstrap
 
 import (
+	"bytes"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net"
@@ -16,6 +18,7 @@ import (
 	"github.com/Zhiruosama/Email-Service/internal/application/ports"
 	consumerrabbit "github.com/Zhiruosama/Email-Service/internal/consumer/rabbitmq"
 	publisherabbit "github.com/Zhiruosama/Email-Service/internal/publisher/rabbitmq"
+	"github.com/google/uuid"
 )
 
 const FakeProvider = "fake"
@@ -37,13 +40,22 @@ type PollConfig struct {
 	ErrorCap  time.Duration
 }
 
+type SubmissionSecurityConfig struct {
+	AllowInsecureGRPC   bool
+	DevelopmentTenantID string
+	PayloadKeyID        string
+	EncryptionKey       []byte
+	FingerprintKey      []byte
+}
+
 type Config struct {
-	InstanceID        string
-	Provider          string
-	GRPCListenAddress string
-	ShutdownTimeout   time.Duration
-	HealthInterval    time.Duration
-	HealthTimeout     time.Duration
+	InstanceID         string
+	Provider           string
+	GRPCListenAddress  string
+	ShutdownTimeout    time.Duration
+	HealthInterval     time.Duration
+	HealthTimeout      time.Duration
+	SubmissionSecurity SubmissionSecurityConfig
 
 	Database DatabaseConfig
 
@@ -89,6 +101,9 @@ func loadConfig(lookup environmentLookup, hostname string) (Config, error) {
 	instanceID := environmentOr(lookup, "MAIL_INSTANCE_ID", hostname)
 	config := DefaultConfig(databaseURL, rabbitURL, instanceID, provider)
 	config.GRPCListenAddress = environmentOr(lookup, "MAIL_GRPC_LISTEN_ADDRESS", config.GRPCListenAddress)
+	if err := loadSubmissionSecurity(&config, lookup); err != nil {
+		return Config{}, err
+	}
 
 	if err := applyEnvironmentOverrides(&config, lookup); err != nil {
 		return Config{}, err
@@ -168,6 +183,9 @@ func (c Config) Validate() error {
 	if c.HealthTimeout < 100*time.Millisecond || c.HealthTimeout > c.HealthInterval {
 		return invalidConfig("MAIL_HEALTH_TIMEOUT must be in range 100ms..health interval")
 	}
+	if err := c.SubmissionSecurity.Validate(); err != nil {
+		return err
+	}
 	if err := c.Database.Validate(); err != nil {
 		return err
 	}
@@ -202,6 +220,75 @@ func (c Config) Validate() error {
 		return invalidConfig("MAIL_SHUTDOWN_TIMEOUT must exceed consumer shutdown timeout")
 	}
 	return nil
+}
+
+func (c SubmissionSecurityConfig) Validate() error {
+	if !c.AllowInsecureGRPC {
+		return invalidConfig("MAIL_GRPC_ALLOW_INSECURE must be explicitly true until TLS is implemented")
+	}
+	if _, err := uuid.Parse(c.DevelopmentTenantID); err != nil {
+		return invalidConfig("MAIL_DEV_TENANT_ID must be a UUID")
+	}
+	if strings.TrimSpace(c.PayloadKeyID) == "" || len(c.PayloadKeyID) > 128 || strings.ContainsAny(c.PayloadKeyID, "\r\n") {
+		return invalidConfig("MAIL_PAYLOAD_KEY_ID must contain 1..128 safe bytes")
+	}
+	if len(c.EncryptionKey) != 32 {
+		return invalidConfig("MAIL_PAYLOAD_ENCRYPTION_KEY_BASE64 must decode to 32 bytes")
+	}
+	if len(c.FingerprintKey) != 32 {
+		return invalidConfig("MAIL_PAYLOAD_FINGERPRINT_KEY_BASE64 must decode to 32 bytes")
+	}
+	if bytes.Equal(c.EncryptionKey, c.FingerprintKey) {
+		return invalidConfig("payload encryption and fingerprint keys must be different")
+	}
+	return nil
+}
+
+func loadSubmissionSecurity(config *Config, lookup environmentLookup) error {
+	insecureValue, err := requiredEnvironment(lookup, "MAIL_GRPC_ALLOW_INSECURE")
+	if err != nil {
+		return err
+	}
+	allowInsecure, err := strconv.ParseBool(insecureValue)
+	if err != nil {
+		return invalidConfig("MAIL_GRPC_ALLOW_INSECURE must be a boolean")
+	}
+	tenantID, err := requiredEnvironment(lookup, "MAIL_DEV_TENANT_ID")
+	if err != nil {
+		return err
+	}
+	keyID, err := requiredEnvironment(lookup, "MAIL_PAYLOAD_KEY_ID")
+	if err != nil {
+		return err
+	}
+	encryptionKey, err := requiredBase64Key(lookup, "MAIL_PAYLOAD_ENCRYPTION_KEY_BASE64")
+	if err != nil {
+		return err
+	}
+	fingerprintKey, err := requiredBase64Key(lookup, "MAIL_PAYLOAD_FINGERPRINT_KEY_BASE64")
+	if err != nil {
+		return err
+	}
+	config.SubmissionSecurity = SubmissionSecurityConfig{
+		AllowInsecureGRPC:   allowInsecure,
+		DevelopmentTenantID: tenantID,
+		PayloadKeyID:        keyID,
+		EncryptionKey:       encryptionKey,
+		FingerprintKey:      fingerprintKey,
+	}
+	return nil
+}
+
+func requiredBase64Key(lookup environmentLookup, name string) ([]byte, error) {
+	encoded, err := requiredEnvironment(lookup, name)
+	if err != nil {
+		return nil, err
+	}
+	decoded, err := base64.StdEncoding.Strict().DecodeString(encoded)
+	if err != nil || len(decoded) != 32 {
+		return nil, invalidConfig(name + " must be strict base64 encoding exactly 32 bytes")
+	}
+	return decoded, nil
 }
 
 func (c DatabaseConfig) Validate() error {

@@ -127,6 +127,10 @@ func validSubmitCommand() SubmitEmailCommand {
 
 type nilTemplateResolver struct{}
 
+func (nilTemplateResolver) AuthorizeSender(context.Context, string, string) error {
+	panic("must not be called")
+}
+
 func (nilTemplateResolver) Resolve(_ context.Context, _ ports.ResolveTemplateRequest) (ports.ResolvedTemplate, error) {
 	panic("must not be called")
 }

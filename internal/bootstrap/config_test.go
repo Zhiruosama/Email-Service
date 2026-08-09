@@ -7,19 +7,29 @@ import (
 	"time"
 )
 
+const (
+	testEncryptionKeyBase64  = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+	testFingerprintKeyBase64 = "YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODk="
+)
+
 func TestLoadConfigDefaultsAndOverrides(t *testing.T) {
 	t.Parallel()
 	environment := map[string]string{
-		"DATABASE_URL":                   "postgres://mail:secret@localhost:5432/mail?sslmode=disable",
-		"RABBITMQ_URL":                   "amqp://mail:secret@localhost:5672/",
-		"MAIL_PROVIDER":                  "fake",
-		"MAIL_INSTANCE_ID":               "worker-a",
-		"MAIL_GRPC_LISTEN_ADDRESS":       "127.0.0.1:9090",
-		"MAIL_DATABASE_MAX_CONNS":        "32",
-		"MAIL_SCHEDULER_BATCH_SIZE":      "64",
-		"MAIL_RELAY_PUBLISH_CONCURRENCY": "4",
-		"MAIL_CONSUMER_LANES":            "6",
-		"MAIL_PROVIDER_TIMEOUT":          "12s",
+		"DATABASE_URL":                        "postgres://mail:secret@localhost:5432/mail?sslmode=disable",
+		"RABBITMQ_URL":                        "amqp://mail:secret@localhost:5672/",
+		"MAIL_PROVIDER":                       "fake",
+		"MAIL_INSTANCE_ID":                    "worker-a",
+		"MAIL_GRPC_LISTEN_ADDRESS":            "127.0.0.1:9090",
+		"MAIL_DATABASE_MAX_CONNS":             "32",
+		"MAIL_SCHEDULER_BATCH_SIZE":           "64",
+		"MAIL_RELAY_PUBLISH_CONCURRENCY":      "4",
+		"MAIL_CONSUMER_LANES":                 "6",
+		"MAIL_PROVIDER_TIMEOUT":               "12s",
+		"MAIL_GRPC_ALLOW_INSECURE":            "true",
+		"MAIL_DEV_TENANT_ID":                  "10000000-0000-4000-8000-000000000001",
+		"MAIL_PAYLOAD_KEY_ID":                 "dev-key-1",
+		"MAIL_PAYLOAD_ENCRYPTION_KEY_BASE64":  testEncryptionKeyBase64,
+		"MAIL_PAYLOAD_FINGERPRINT_KEY_BASE64": testFingerprintKeyBase64,
 	}
 	config, err := loadConfig(mapLookup(environment), "ignored-host")
 	if err != nil {
@@ -46,15 +56,21 @@ func TestLoadConfigDefaultsAndOverrides(t *testing.T) {
 func TestLoadConfigRequiresSecretsWithoutLeakingValues(t *testing.T) {
 	t.Parallel()
 	secret := "postgres://user:do-not-print@localhost:5432/mail"
-	tests := []map[string]string{
-		{},
-		{"DATABASE_URL": secret},
-		{
-			"DATABASE_URL": secret,
-			"RABBITMQ_URL": "amqp://user:do-not-print@localhost:5672/",
-		},
+	base := validConfigEnvironment()
+	base["DATABASE_URL"] = secret
+	tests := []string{
+		"DATABASE_URL",
+		"RABBITMQ_URL",
+		"MAIL_PROVIDER",
+		"MAIL_GRPC_ALLOW_INSECURE",
+		"MAIL_DEV_TENANT_ID",
+		"MAIL_PAYLOAD_KEY_ID",
+		"MAIL_PAYLOAD_ENCRYPTION_KEY_BASE64",
+		"MAIL_PAYLOAD_FINGERPRINT_KEY_BASE64",
 	}
-	for _, environment := range tests {
+	for _, missing := range tests {
+		environment := cloneEnvironment(base)
+		delete(environment, missing)
 		_, err := loadConfig(mapLookup(environment), "test-host")
 		if !errors.Is(err, ErrInvalidConfig) {
 			t.Fatalf("load error = %v, want ErrInvalidConfig", err)
@@ -67,11 +83,7 @@ func TestLoadConfigRequiresSecretsWithoutLeakingValues(t *testing.T) {
 
 func TestConfigRejectsInvalidOverrides(t *testing.T) {
 	t.Parallel()
-	base := map[string]string{
-		"DATABASE_URL":  "postgres://mail:secret@localhost:5432/mail",
-		"RABBITMQ_URL":  "amqp://mail:secret@localhost:5672/",
-		"MAIL_PROVIDER": "fake",
-	}
+	base := validConfigEnvironment()
 	tests := []struct {
 		name  string
 		key   string
@@ -83,6 +95,10 @@ func TestConfigRejectsInvalidOverrides(t *testing.T) {
 		{name: "unsafe instance", key: "MAIL_INSTANCE_ID", value: "bad/id"},
 		{name: "pool bounds", key: "MAIL_DATABASE_MIN_CONNS", value: "100"},
 		{name: "consumer shutdown", key: "MAIL_CONSUMER_SHUTDOWN_TIMEOUT", value: "50s"},
+		{name: "insecure acknowledgement", key: "MAIL_GRPC_ALLOW_INSECURE", value: "false"},
+		{name: "tenant", key: "MAIL_DEV_TENANT_ID", value: "tenant"},
+		{name: "key encoding", key: "MAIL_PAYLOAD_ENCRYPTION_KEY_BASE64", value: "not-secret-key-material"},
+		{name: "same key purpose", key: "MAIL_PAYLOAD_FINGERPRINT_KEY_BASE64", value: testEncryptionKeyBase64},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -96,6 +112,39 @@ func TestConfigRejectsInvalidOverrides(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDefaultConfigFailsClosedWithoutSubmissionSecrets(t *testing.T) {
+	config := DefaultConfig(
+		"postgres://mail:secret@localhost:5432/mail",
+		"amqp://mail:secret@localhost:5672/",
+		"test-instance",
+		FakeProvider,
+	)
+	if err := config.Validate(); !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("default config error = %v, want ErrInvalidConfig", err)
+	}
+}
+
+func validConfigEnvironment() map[string]string {
+	return map[string]string{
+		"DATABASE_URL":                        "postgres://mail:secret@localhost:5432/mail",
+		"RABBITMQ_URL":                        "amqp://mail:secret@localhost:5672/",
+		"MAIL_PROVIDER":                       "fake",
+		"MAIL_GRPC_ALLOW_INSECURE":            "true",
+		"MAIL_DEV_TENANT_ID":                  "10000000-0000-4000-8000-000000000001",
+		"MAIL_PAYLOAD_KEY_ID":                 "dev-key-1",
+		"MAIL_PAYLOAD_ENCRYPTION_KEY_BASE64":  testEncryptionKeyBase64,
+		"MAIL_PAYLOAD_FINGERPRINT_KEY_BASE64": testFingerprintKeyBase64,
+	}
+}
+
+func cloneEnvironment(source map[string]string) map[string]string {
+	copy := make(map[string]string, len(source))
+	for key, value := range source {
+		copy[key] = value
+	}
+	return copy
 }
 
 func mapLookup(environment map[string]string) environmentLookup {

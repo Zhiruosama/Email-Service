@@ -68,8 +68,8 @@ mail-service --role=reconciler
 mail-service --role=all
 ```
 
-07-C 当前落地的是固定 `all` 形态的后台投递链路，尚未实现命令行 role 开关和 Submission
-API。上面的命令是目标部署形态，不应误认为已经全部可用。
+08-A2 当前落地的是固定 `all` 形态，并已注册 `SubmitEmail/GetEmail`；尚未实现命令行 role
+开关、Batch、Cancel 和 ListEvents。上面的命令是目标部署形态，不应误认为已经全部可用。
 
 本地和小规模环境使用 `all`。生产环境按职责独立扩容和隔离故障。只有当组织规模、
 发布节奏或容量证明需要时，才拆成多个仓库或独立服务。
@@ -135,8 +135,8 @@ Adapter 构造时只校验配置，不要求 RabbitMQ 在线。第一次 Publish
 - 第二段数据库事务提交后才 ACK；重复或旧 generation 不再次调用 Provider。
 
 07-A/07-B 已完成上述 Worker 应用内核、Fake Provider 和 RabbitMQ Consumer；07-C 已将
-Scheduler、Relay、Publisher、Worker、Consumer 与标准 gRPC Health 装配为可运行后台进程。
-当前
+Scheduler、Relay、Publisher、Worker、Consumer、标准 gRPC Health 与 Submission/Query API
+已装配为可运行进程。当前
 Provider Request 只含 Message、Tenant、Attempt 和策略元数据；模板、收件人密文、MIME
 渲染与 Provider Router 会在相应数据模型完成后接入，不能用明文占位绕过安全设计。
 

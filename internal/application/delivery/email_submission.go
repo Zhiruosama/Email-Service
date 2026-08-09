@@ -65,21 +65,21 @@ type SubmitEmailResult struct {
 
 type EmailSubmissionService struct {
 	transactor ports.Transactor
-	templates  ports.TemplateResolver
+	catalog    ports.SubmissionCatalog
 	protector  ports.PayloadProtector
 }
 
 func NewEmailSubmissionService(
 	transactor ports.Transactor,
-	templates ports.TemplateResolver,
+	catalog ports.SubmissionCatalog,
 	protector ports.PayloadProtector,
 ) *EmailSubmissionService {
-	if transactor == nil || templates == nil || protector == nil {
+	if transactor == nil || catalog == nil || protector == nil {
 		panic("delivery: submission service dependencies must not be nil")
 	}
 	return &EmailSubmissionService{
 		transactor: transactor,
-		templates:  templates,
+		catalog:    catalog,
 		protector:  protector,
 	}
 }
@@ -92,7 +92,10 @@ func (s *EmailSubmissionService) Submit(
 	if err != nil {
 		return SubmitEmailResult{}, err
 	}
-	resolved, err := s.templates.Resolve(ctx, ports.ResolveTemplateRequest{
+	if err := s.catalog.AuthorizeSender(ctx, normalized.TenantID, normalized.SenderIdentityKey); err != nil {
+		return SubmitEmailResult{}, err
+	}
+	resolved, err := s.catalog.Resolve(ctx, ports.ResolveTemplateRequest{
 		TenantID:         normalized.TenantID,
 		TemplateKey:      normalized.TemplateKey,
 		RequestedVersion: cloneUint32(normalized.TemplateVersion),
