@@ -16,6 +16,7 @@ import (
 	consumerrabbit "github.com/Zhiruosama/Email-Service/internal/consumer/rabbitmq"
 	"github.com/Zhiruosama/Email-Service/internal/content/mimebuilder"
 	providerfake "github.com/Zhiruosama/Email-Service/internal/provider/fake"
+	providerresilience "github.com/Zhiruosama/Email-Service/internal/provider/resilience"
 	providersmtp "github.com/Zhiruosama/Email-Service/internal/provider/smtp"
 	publisherabbit "github.com/Zhiruosama/Email-Service/internal/publisher/rabbitmq"
 	payloadsecurity "github.com/Zhiruosama/Email-Service/internal/security/payload"
@@ -251,7 +252,11 @@ func newEmailProvider(config Config) (ports.EmailProvider, ports.SenderIdentity,
 		if err != nil {
 			return nil, ports.SenderIdentity{}, fmt.Errorf("%w: create SMTP provider", ErrStartup)
 		}
-		return provider, senderIdentity, nil
+		guarded, err := providerresilience.New(provider, config.ProviderResilience)
+		if err != nil {
+			return nil, ports.SenderIdentity{}, fmt.Errorf("%w: create provider resilience guard", ErrStartup)
+		}
+		return guarded, senderIdentity, nil
 	default:
 		return nil, ports.SenderIdentity{}, fmt.Errorf("%w: unsupported provider", ErrStartup)
 	}

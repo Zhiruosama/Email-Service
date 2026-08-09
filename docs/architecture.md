@@ -143,8 +143,10 @@ Plain Text，再生成有边界和大小限制的 UTF-8 `multipart/alternative` 
 存在，不进入 Outbox、Attempt、Journal 或普通日志。09-A2A 已实现第一版 SMTP Provider：
 Composition Root 可显式选择 Fake 或 SMTP；SMTP Adapter 通过 implicit TLS 和 LOGIN/PLAIN
 完成单收件人会话，把每个协议阶段的状态归一化为稳定 Failure，并在 DATA 最终响应丢失时返回
-`SUBMISSION_UNKNOWN`。Provider 采用按需连接且不参与启动 readiness；连接复用、限流、熔断、
-舱壁和 Provider Router 仍待后续阶段接入。
+`SUBMISSION_UNKNOWN`。Provider 采用按需连接且不参与启动 readiness。09-B1 已在 SMTP Adapter
+外层接入 Resilience Guard：先非阻塞获取并发舱壁，再消费本地 Token Bucket；任一步拒绝都转换为
+可重试 `RATE_LIMITED`，由现有数据库重试链路重新调度，而不是在进程内增加第二条等待队列。
+连接复用、熔断和 Provider Router 仍待后续阶段接入。
 
 09-A2B 已通过双重显式授权的真实 QQ SMTP smoke test，验证 `smtp.qq.com:465` implicit TLS、
 AUTH LOGIN、单收件人 Envelope、multipart MIME DATA 和最终成功响应。该结果只将 Message 推进

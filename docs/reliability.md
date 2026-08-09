@@ -212,6 +212,27 @@ CLOSED → OPEN → HALF_OPEN → CLOSED
 - Submission API、Worker、Subscriber Worker 的连接池；
 - 回调目标之间的执行池。
 
+09-B1 已先落地单 SMTP Provider 的本地执行舱壁和 Token Bucket：
+
+```text
+Dispatch Worker
+  → 非阻塞并发槽位
+  → 本地速率令牌
+  → SMTP Provider
+```
+
+- 并发槽位已满时立即返回 `RATE_LIMITED/LOCAL_PROVIDER_BULKHEAD_FULL`；
+- 令牌不足时立即返回 `RATE_LIMITED/LOCAL_PROVIDER_RATE_LIMITED`；
+- 两者都标记为可重试，由 Message 状态机和数据库 Scheduler 安排下一次投递；
+- 不在 Guard 内等待，不持有 MIME，也不创建不可恢复的内存任务队列；
+- 先取并发槽位、再取令牌，保证无法执行的请求不会白白消耗速率额度；
+- 已取消且尚未调用 Provider 的请求返回可安全重试的 `TIMEOUT_BEFORE_SEND`。
+
+RabbitMQ `prefetch` 限制一个 Consumer 提前持有多少未确认消息，Provider 舱壁限制实际有多少外部
+SMTP 会话同时执行，两者保护的资源不同。当前 Token Bucket 按进程实例维护；部署 `N` 个相同
+副本时，理论聚合速率约为 `N × 单实例速率`。需要严格全局配额时必须引入共享限流状态或由控制面
+把总额度切分到各实例，不能把当前本地限制描述成全局保证。
+
 ### 6.3 降级顺序
 
 1. 降低 `BULK` 和 `NOTIFICATION` 吞吐；

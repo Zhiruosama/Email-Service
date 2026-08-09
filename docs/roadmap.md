@@ -72,8 +72,9 @@
 - 已完成：QQ SMTP 配置加载与运行时显式 Provider 选择；
 - 已完成：协议阶段超时、4xx/5xx 与 DATA 不确定结果分类；
 - 已完成：双重显式授权的 QQ SMTP smoke test；
-- Provider 级限速；
-- 熔断和舱壁；
+- 已完成：单实例 Provider Token Bucket 限速；
+- 已完成：非阻塞 Provider 并发舱壁；
+- Provider 熔断器；
 - Retry Scheduler；
 - DLQ 和安全重放；
 - 终态敏感 payload 清理。

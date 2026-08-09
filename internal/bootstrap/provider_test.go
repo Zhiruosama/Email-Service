@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	providerresilience "github.com/Zhiruosama/Email-Service/internal/provider/resilience"
 	providersmtp "github.com/Zhiruosama/Email-Service/internal/provider/smtp"
 )
 
@@ -19,7 +20,11 @@ func TestNewEmailProviderSelectsProviderAndSenderIdentity(t *testing.T) {
 		t.Fatalf("fake provider/sender = %q/%#v", fake.Key(), fakeSender)
 	}
 
-	smtpConfig := Config{Provider: SMTPProvider, SMTP: providersmtp.DefaultConfig()}
+	smtpConfig := Config{
+		Provider:           SMTPProvider,
+		SMTP:               providersmtp.DefaultConfig(),
+		ProviderResilience: providerresilience.DefaultConfig(),
+	}
 	smtpConfig.SMTP.Username = "sender@qq.com"
 	smtpConfig.SMTP.AuthCode = "test-authorization-code"
 	smtpConfig.SMTP.FromAddress = "sender@qq.com"
@@ -30,6 +35,9 @@ func TestNewEmailProviderSelectsProviderAndSenderIdentity(t *testing.T) {
 	}
 	if provider.Key() != SMTPProvider || sender.Address != "sender@qq.com" || sender.DisplayName != "AI Nexus" {
 		t.Fatalf("SMTP provider/sender = %q/%#v", provider.Key(), sender)
+	}
+	if _, ok := provider.(*providerresilience.Guard); !ok {
+		t.Fatalf("SMTP provider type = %T, want resilience Guard", provider)
 	}
 }
 

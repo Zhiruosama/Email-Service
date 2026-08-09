@@ -29,11 +29,12 @@ Worker 在数据库事务外认证解密 Payload、校验不可变身份、渲�
 multipart/alternative MIME，明文不进入数据库、Outbox、Fake Provider 观测记录或错误码。
 SMTP Provider 核心也已完成：支持 implicit TLS、LOGIN/PLAIN 授权、阶段化超时和 4xx/5xx
 错误归一化，并把 DATA 最终响应丢失建模为 `SUBMISSION_UNKNOWN`。Composition Root 可显式选择
-`fake` 或 `smtp`，普通测试永远不会连接真实服务器。下一步先由人工显式执行一次 QQ SMTP
-smoke test，再实现 Provider 级限流、熔断与并发舱壁。QQ SMTP smoke test 现已通过：真实
+`fake` 或 `smtp`，普通测试永远不会连接真实服务器。QQ SMTP smoke test 现已通过：真实
 implicit TLS、AUTH LOGIN、Envelope、MIME DATA 和最终接受响应均已验证；这只证明 SMTP Server
 接受，不等同于系统可自动证明最终进入收件箱。本次测试邮件已由人工确认出现在普通收件箱，
-中文发件名称、Subject 和正文显示正常。下一阶段进入 09-B Provider 级限流、熔断与并发舱壁。
+中文发件名称、Subject 和正文显示正常。09-B1 又在 SMTP 外层接入了非阻塞并发舱壁和本地
+Token Bucket：过载请求不会堆在进程内，而是返回稳定、可重试的失败并回到持久化调度链路。
+下一阶段进入 09-B2 Provider 熔断器。
 
 ## 设计文档
 
@@ -140,7 +141,9 @@ Manual ACK、延迟重试、DLQ，以及 Broker 应用重启后的客户端重�
 ### 显式 SMTP 模式
 
 只有把 `MAIL_PROVIDER` 改为 `smtp` 时，进程才会要求并使用 `.env.example` 中的
-`MAIL_SMTP_*` 配置。SMTP Adapter 采用按需连接，应用启动不会连接或发送邮件。真实 smoke test
+`MAIL_SMTP_*` 配置。`MAIL_PROVIDER_MAX_CONCURRENT`、`MAIL_PROVIDER_RATE_PER_SECOND` 和
+`MAIL_PROVIDER_RATE_BURST` 分别控制单实例 SMTP 并发、持续速率和短时突发；它们是本地保护，
+不是多实例共享配额。SMTP Adapter 采用按需连接，应用启动不会连接或发送邮件。真实 smoke test
 还受到 build tag 和环境开关双重保护：必须主动导出本地 `.env`，把
 `MAIL_SMTP_REAL_TEST_ENABLED` 改为 `true`，再执行 `make test-smtp-real`。普通 `make test`、
 `make test-integration` 和 `make run` 不会触发这个测试。授权码不得提交到 Git。

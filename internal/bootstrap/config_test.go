@@ -26,6 +26,9 @@ func TestLoadConfigDefaultsAndOverrides(t *testing.T) {
 		"MAIL_CONSUMER_LANES":                 "6",
 		"MAIL_LIFECYCLE_CONSUMER_LANES":       "3",
 		"MAIL_PROVIDER_TIMEOUT":               "12s",
+		"MAIL_PROVIDER_MAX_CONCURRENT":        "3",
+		"MAIL_PROVIDER_RATE_PER_SECOND":       "2.5",
+		"MAIL_PROVIDER_RATE_BURST":            "4",
 		"MAIL_CALLBACK_TIMEOUT":               "4s",
 		"MAIL_GRPC_ALLOW_INSECURE":            "true",
 		"MAIL_DEV_TENANT_ID":                  "10000000-0000-4000-8000-000000000001",
@@ -50,6 +53,11 @@ func TestLoadConfigDefaultsAndOverrides(t *testing.T) {
 	}
 	if config.Worker.ProviderTimeout != 12*time.Second {
 		t.Fatalf("provider timeout = %s", config.Worker.ProviderTimeout)
+	}
+	if config.ProviderResilience.MaxConcurrent != 3 ||
+		config.ProviderResilience.RatePerSecond != 2.5 ||
+		config.ProviderResilience.Burst != 4 {
+		t.Fatalf("provider resilience overrides = %#v", config.ProviderResilience)
 	}
 	if config.NotificationWorker.CallbackTimeout != 4*time.Second ||
 		config.LifecycleConsumer.LaneCount != 3 ||
@@ -102,6 +110,10 @@ func TestConfigRejectsInvalidOverrides(t *testing.T) {
 	}{
 		{name: "duration syntax", key: "MAIL_PROVIDER_TIMEOUT", value: "soon"},
 		{name: "integer syntax", key: "MAIL_CONSUMER_LANES", value: "many"},
+		{name: "provider concurrency", key: "MAIL_PROVIDER_MAX_CONCURRENT", value: "0"},
+		{name: "provider rate syntax", key: "MAIL_PROVIDER_RATE_PER_SECOND", value: "fast"},
+		{name: "provider rate finite", key: "MAIL_PROVIDER_RATE_PER_SECOND", value: "NaN"},
+		{name: "provider burst", key: "MAIL_PROVIDER_RATE_BURST", value: "0"},
 		{name: "unsupported provider", key: "MAIL_PROVIDER", value: "unsupported"},
 		{name: "unsafe instance", key: "MAIL_INSTANCE_ID", value: "bad/id"},
 		{name: "pool bounds", key: "MAIL_DATABASE_MIN_CONNS", value: "100"},

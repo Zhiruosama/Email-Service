@@ -33,7 +33,8 @@ Mail Service 从零到可上线的每一个开发阶段。
 | 09-A1 | Payload 解密、模板渲染与 MIME | 已完成 | [Delivery Material 与 MIME](09a1-delivery-material-mime.md) |
 | 09-A2A | SMTP Provider 核心与错误分类 | 已完成 | [SMTP Provider 核心](09a2a-smtp-provider-core.md) |
 | 09-A2B | QQ SMTP 真实 smoke test | 已完成 | [QQ SMTP 真实验证](09a2b-qq-smtp-smoke.md) |
-| 09-B | Provider 限流、熔断与舱壁 | 未开始 | 完成后新增 |
+| 09-B1 | Provider 并发舱壁与本地 Token Bucket | 已完成 | [Provider 舱壁与限速](09b1-provider-bulkhead-rate-limit.md) |
+| 09-B2 | Provider 熔断器 | 未开始 | 完成后新增 |
 | 10 | 多租户、模板和生产化 | 未开始 | 完成后新增 |
 
 ## 推荐阅读顺序
@@ -59,7 +60,8 @@ Mail Service 从零到可上线的每一个开发阶段。
 19. [Payload 解密、模板渲染与安全 MIME](09a1-delivery-material-mime.md)
 20. [SMTP Provider 核心与失败语义](09a2a-smtp-provider-core.md)
 21. [QQ SMTP 真实验证与 503 排障](09a2b-qq-smtp-smoke.md)
-22. [核心术语速查](glossary.md)
+22. [Provider 并发舱壁与本地 Token Bucket](09b1-provider-bulkhead-rate-limit.md)
+23. [核心术语速查](glossary.md)
 
 ## 每阶段固定记录结构
 

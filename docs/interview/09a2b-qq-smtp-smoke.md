@@ -173,10 +173,9 @@ RFC 5321 将 503 定义为 Bad sequence of commands。收件人不存在通常�
 
 ## 9. 下一步
 
-进入 09-B Provider 可靠性保护：
+进入 09-B Provider 可靠性保护。其中并发舱壁和本地 Token Bucket 已在 09-B1 完成，详见
+[Provider 舱壁与限速](09b1-provider-bulkhead-rate-limit.md)。后续继续：
 
-- 按 provider/endpoint/credential 建立并发舱壁；
-- Token Bucket 限速；
 - 熔断器 CLOSED/OPEN/HALF_OPEN；
 - 区分计入熔断的基础设施故障与不计入的收件人错误；
 - 为限流、熔断拒绝和恢复增加 Metrics 与测试；

@@ -18,6 +18,7 @@ import (
 	notificationapp "github.com/Zhiruosama/Email-Service/internal/application/notification"
 	"github.com/Zhiruosama/Email-Service/internal/application/ports"
 	consumerrabbit "github.com/Zhiruosama/Email-Service/internal/consumer/rabbitmq"
+	providerresilience "github.com/Zhiruosama/Email-Service/internal/provider/resilience"
 	providersmtp "github.com/Zhiruosama/Email-Service/internal/provider/smtp"
 	publisherabbit "github.com/Zhiruosama/Email-Service/internal/publisher/rabbitmq"
 	"github.com/Zhiruosama/Email-Service/internal/subscriber/grpcsubscriber"
@@ -78,6 +79,7 @@ type Config struct {
 	HealthTimeout      time.Duration
 	SubmissionSecurity SubmissionSecurityConfig
 	SMTP               providersmtp.Config
+	ProviderResilience providerresilience.Config
 
 	Database DatabaseConfig
 
@@ -152,13 +154,14 @@ func loadConfig(lookup environmentLookup, hostname string) (Config, error) {
 // tuning. Callers must still call Validate after making overrides.
 func DefaultConfig(databaseURL, rabbitURL, instanceID, provider string) Config {
 	return Config{
-		InstanceID:        instanceID,
-		Provider:          provider,
-		GRPCListenAddress: ":8080",
-		ShutdownTimeout:   45 * time.Second,
-		HealthInterval:    2 * time.Second,
-		HealthTimeout:     time.Second,
-		SMTP:              providersmtp.DefaultConfig(),
+		InstanceID:         instanceID,
+		Provider:           provider,
+		GRPCListenAddress:  ":8080",
+		ShutdownTimeout:    45 * time.Second,
+		HealthInterval:     2 * time.Second,
+		HealthTimeout:      time.Second,
+		SMTP:               providersmtp.DefaultConfig(),
+		ProviderResilience: providerresilience.DefaultConfig(),
 		Database: DatabaseConfig{
 			URL:             databaseURL,
 			MinConnections:  2,
@@ -209,6 +212,9 @@ func DefaultConfig(databaseURL, rabbitURL, instanceID, provider string) Config {
 func (c Config) Validate() error {
 	if !validInstanceID(c.InstanceID) {
 		return invalidConfig("MAIL_INSTANCE_ID must contain 1..200 safe bytes")
+	}
+	if err := c.ProviderResilience.Validate(); err != nil {
+		return invalidConfig("provider resilience configuration is invalid")
 	}
 	switch c.Provider {
 	case FakeProvider:
@@ -500,6 +506,8 @@ func applyEnvironmentOverrides(config *Config, lookup environmentLookup) error {
 		{"MAIL_CONSUMER_PREFETCH", &config.Consumer.PrefetchPerLane},
 		{"MAIL_LIFECYCLE_CONSUMER_LANES", &config.LifecycleConsumer.LaneCount},
 		{"MAIL_LIFECYCLE_CONSUMER_PREFETCH", &config.LifecycleConsumer.PrefetchPerLane},
+		{"MAIL_PROVIDER_MAX_CONCURRENT", &config.ProviderResilience.MaxConcurrent},
+		{"MAIL_PROVIDER_RATE_BURST", &config.ProviderResilience.Burst},
 	}
 	for _, field := range uint32s {
 		if err := overrideUint32(lookup, field.name, field.target); err != nil {
@@ -511,6 +519,9 @@ func applyEnvironmentOverrides(config *Config, lookup environmentLookup) error {
 		return err
 	}
 	if err := overrideInt32(lookup, "MAIL_DATABASE_MAX_CONNS", &config.Database.MaxConnections); err != nil {
+		return err
+	}
+	if err := overrideFloat64(lookup, "MAIL_PROVIDER_RATE_PER_SECOND", &config.ProviderResilience.RatePerSecond); err != nil {
 		return err
 	}
 	return nil
@@ -567,6 +578,19 @@ func overrideInt32(lookup environmentLookup, name string, target *int32) error {
 		return invalidConfig(name + " must be a signed integer")
 	}
 	*target = int32(parsed)
+	return nil
+}
+
+func overrideFloat64(lookup environmentLookup, name string, target *float64) error {
+	value, exists := lookup(name)
+	if !exists {
+		return nil
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return invalidConfig(name + " must be a decimal number")
+	}
+	*target = parsed
 	return nil
 }
 
