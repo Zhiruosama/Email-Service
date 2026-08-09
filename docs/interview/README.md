@@ -27,7 +27,8 @@ Mail Service 从零到可上线的每一个开发阶段。
 | 07-C | Composition Root、进程生命周期与健康检查 | 已完成 | [运行时装配](07c-composition-root-runtime.md) |
 | 08-A1 | 可靠受理、幂等指纹与 Payload 加密 | 已完成 | [可靠受理内核](08a1-reliable-submission-core.md) |
 | 08-A2 | Submission/Query gRPC Adapter | 已完成 | [gRPC Submission/Query](08a2-grpc-submission-query.md) |
-| 08-B | 状态通知与 AI-Nexus 联调 | 未开始 | 完成后新增 |
+| 08-B1 | Delivery Event Journal 与通知事实 | 已完成 | [Delivery Event Journal](08b1-delivery-event-journal.md) |
+| 08-B2 | Notification Worker 与 AI-Nexus 回调 | 未开始 | 完成后新增 |
 | 09 | SMTP Provider、重试与熔断 | 未开始 | 完成后新增 |
 | 10 | 多租户、模板和生产化 | 未开始 | 完成后新增 |
 
@@ -48,7 +49,8 @@ Mail Service 从零到可上线的每一个开发阶段。
 13. [Composition Root、进程生命周期与健康检查](07c-composition-root-runtime.md)
 14. [可靠受理、幂等指纹与 Payload 加密](08a1-reliable-submission-core.md)
 15. [gRPC Submission/Query 与租户身份边界](08a2-grpc-submission-query.md)
-16. [核心术语速查](glossary.md)
+16. [Delivery Event Journal 与通知事实](08b1-delivery-event-journal.md)
+17. [核心术语速查](glossary.md)
 
 ## 每阶段固定记录结构
 

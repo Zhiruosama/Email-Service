@@ -207,24 +207,26 @@ unique (message_id, dispatch_generation)
 
 ### 3.6 `delivery_events`
 
-追加式审计事件：
+08-B1 已落地的追加式审计事件：
 
 ```text
 id uuid primary key
+tenant_id uuid
 message_id uuid
-provider_event_id varchar nullable
-provider_id uuid nullable
-event_type varchar
+idempotency_key varchar
+status varchar
 sequence bigint
+attempt_number int
+provider_message_id varchar nullable
+failure_category/code/retryable nullable
 occurred_at timestamptz
-received_at timestamptz
-sanitized_payload jsonb
+observed_at timestamptz
 unique (message_id, sequence)
-unique (provider_id, provider_event_id)
 ```
 
-内部 `sequence` 由 Mail Service 分配。Provider 自己的序列或时间不能直接作为全局
-顺序依据。
+`id` 与对应 lifecycle Outbox 共用稳定的确定性 event ID，作为下游回调幂等键。内部
+`sequence` 由 Mail Service 状态机分配。Provider 自己的序列或时间不能直接作为全局顺序依据。
+未来 Provider webhook 去重需要增加 provider event identity，但不会替换内部 event ID。
 
 ### 3.7 `outbox_events`
 

@@ -115,6 +115,8 @@ func ClassifyDispatchError(err error) DispatchErrorClass {
 		errors.Is(err, ErrMessageEventMapping) ||
 		errors.Is(err, ErrNoPendingMessageEvents) ||
 		errors.Is(err, ports.ErrInvalidMessageRecord) ||
+		errors.Is(err, ports.ErrInvalidDeliveryEvent) ||
+		errors.Is(err, ports.ErrDeliveryEventConflict) ||
 		errors.Is(err, ports.ErrInvalidDeliveryAttempt) ||
 		errors.Is(err, ports.ErrInvalidProviderRequest) ||
 		errors.Is(err, ports.ErrInvalidProviderResult) {
@@ -362,7 +364,7 @@ func (w *DispatchWorker) finalize(
 				transitionErr,
 			)
 		}
-		events, err := mapMessageEvents(record, aggregate.PendingEvents())
+		mapped, err := mapAllMessageEvents(record, aggregate.PendingEvents())
 		if err != nil {
 			return err
 		}
@@ -372,7 +374,10 @@ func (w *DispatchWorker) finalize(
 		if err := unit.DeliveryAttempts().Complete(ctx, completion); err != nil {
 			return err
 		}
-		if err := unit.Outbox().Append(ctx, events); err != nil {
+		if err := unit.DeliveryEvents().Append(ctx, mapped.Delivery); err != nil {
+			return err
+		}
+		if err := unit.Outbox().Append(ctx, mapped.Outbox); err != nil {
 			return err
 		}
 		changed = aggregate
@@ -457,14 +462,17 @@ func saveMessageWithOutbox(
 	unit ports.UnitOfWork,
 	record ports.MessageRecord,
 ) error {
-	events, err := mapMessageEvents(record, record.Message.PendingEvents())
+	mapped, err := mapAllMessageEvents(record, record.Message.PendingEvents())
 	if err != nil {
 		return err
 	}
 	if _, err := unit.Messages().Save(ctx, record.Message); err != nil {
 		return err
 	}
-	return unit.Outbox().Append(ctx, events)
+	if err := unit.DeliveryEvents().Append(ctx, mapped.Delivery); err != nil {
+		return err
+	}
+	return unit.Outbox().Append(ctx, mapped.Outbox)
 }
 
 func saveMessageWithOutboxAndAttempt(
@@ -473,7 +481,7 @@ func saveMessageWithOutboxAndAttempt(
 	record ports.MessageRecord,
 	attempt ports.StartedDeliveryAttempt,
 ) error {
-	events, err := mapMessageEvents(record, record.Message.PendingEvents())
+	mapped, err := mapAllMessageEvents(record, record.Message.PendingEvents())
 	if err != nil {
 		return err
 	}
@@ -483,5 +491,8 @@ func saveMessageWithOutboxAndAttempt(
 	if err := unit.DeliveryAttempts().CreateStarted(ctx, attempt); err != nil {
 		return err
 	}
-	return unit.Outbox().Append(ctx, events)
+	if err := unit.DeliveryEvents().Append(ctx, mapped.Delivery); err != nil {
+		return err
+	}
+	return unit.Outbox().Append(ctx, mapped.Outbox)
 }

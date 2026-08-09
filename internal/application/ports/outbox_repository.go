@@ -72,6 +72,7 @@ type UnitOfWork interface {
 	Clock() TransactionClock
 	Messages() MessageRepository
 	DeliveryAttempts() DeliveryAttemptRepository
+	DeliveryEvents() DeliveryEventRepository
 	Outbox() OutboxRepository
 	DueMessages() DueMessageRepository
 	OutboxDeliveries() OutboxDeliveryRepository

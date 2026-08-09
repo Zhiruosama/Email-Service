@@ -53,6 +53,9 @@ func TestTransactionalOutbox(t *testing.T) {
 			"MESSAGE_STATUS_CHANGED":     {2, 1},
 			"MESSAGE_DISPATCH_REQUESTED": {2, 1},
 		})
+		if countDeliveryEvents(t, ctx, pool, record.Message.ID()) != 2 {
+			t.Fatal("immediate message does not have two lifecycle journal events")
+		}
 
 		duplicate := newRepositoryRecord(t, recordParams{
 			messageID:      "71000000-0000-4000-8000-000000000002",
@@ -71,6 +74,9 @@ func TestTransactionalOutbox(t *testing.T) {
 		if countOutboxEvents(t, ctx, pool, record.Message.ID()) != 3 {
 			t.Fatal("duplicate create generated additional outbox events")
 		}
+		if countDeliveryEvents(t, ctx, pool, record.Message.ID()) != 2 {
+			t.Fatal("duplicate create generated additional journal events")
+		}
 
 		scheduledAt := now.Add(5 * time.Minute)
 		scheduled := newRepositoryRecord(t, recordParams{
@@ -88,6 +94,9 @@ func TestTransactionalOutbox(t *testing.T) {
 			"MESSAGE_ACCEPTED":       {1, 0},
 			"MESSAGE_STATUS_CHANGED": {2, 0},
 		})
+		if countDeliveryEvents(t, ctx, pool, scheduled.Message.ID()) != 2 {
+			t.Fatal("scheduled message does not have two initial journal events")
+		}
 	})
 
 	t.Run("rolls back message when outbox insert fails", func(t *testing.T) {
@@ -111,6 +120,9 @@ func TestTransactionalOutbox(t *testing.T) {
 		}
 		if countOutboxEvents(t, ctx, pool, record.Message.ID()) != 0 {
 			t.Fatal("outbox row survived failed transaction")
+		}
+		if countDeliveryEvents(t, ctx, pool, record.Message.ID()) != 0 {
+			t.Fatal("journal row survived failed outbox transaction")
 		}
 		if len(record.Message.PendingEvents()) != 3 {
 			t.Fatal("failed transaction cleared pending events")
@@ -159,12 +171,18 @@ func TestTransactionalOutbox(t *testing.T) {
 		if countOutboxEvents(t, ctx, pool, record.Message.ID()) != 4 {
 			t.Fatal("queued message does not have four total outbox events")
 		}
+		if countDeliveryEvents(t, ctx, pool, record.Message.ID()) != 3 {
+			t.Fatal("queued message does not have three lifecycle journal events")
+		}
 
 		if _, err := store.Save(ctx, cancelCandidate); !errors.Is(err, ports.ErrConcurrentUpdate) {
 			t.Fatalf("stale save error = %v, want ErrConcurrentUpdate", err)
 		}
 		if countOutboxEvents(t, ctx, pool, record.Message.ID()) != 4 {
 			t.Fatal("stale save inserted an outbox event")
+		}
+		if countDeliveryEvents(t, ctx, pool, record.Message.ID()) != 3 {
+			t.Fatal("stale save inserted a journal event")
 		}
 		if len(cancelCandidate.Message.PendingEvents()) == 0 {
 			t.Fatal("stale save cleared pending events")
@@ -190,6 +208,9 @@ func TestTransactionalOutbox(t *testing.T) {
 		}
 		if countOutboxEvents(t, ctx, pool, record.Message.ID()) != 4 {
 			t.Fatal("forced save failure changed outbox count")
+		}
+		if countDeliveryEvents(t, ctx, pool, record.Message.ID()) != 3 {
+			t.Fatal("forced save failure changed journal count")
 		}
 		if len(current.Message.PendingEvents()) == 0 {
 			t.Fatal("forced save failure cleared pending events")
@@ -356,6 +377,15 @@ func countOutboxEvents(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ag
 	var count int
 	if err := pool.QueryRow(ctx, "SELECT count(*) FROM outbox_events WHERE aggregate_id = $1", aggregateID).Scan(&count); err != nil {
 		t.Fatalf("count outbox events: %v", err)
+	}
+	return count
+}
+
+func countDeliveryEvents(t *testing.T, ctx context.Context, pool *pgxpool.Pool, messageID string) int {
+	t.Helper()
+	var count int
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM delivery_events WHERE message_id = $1", messageID).Scan(&count); err != nil {
+		t.Fatalf("count delivery events: %v", err)
 	}
 	return count
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/Zhiruosama/Email-Service/db/migrations"
 	deliveryapp "github.com/Zhiruosama/Email-Service/internal/application/delivery"
 	"github.com/Zhiruosama/Email-Service/internal/application/ports"
+	"github.com/Zhiruosama/Email-Service/internal/domain/message"
 	payloadsecurity "github.com/Zhiruosama/Email-Service/internal/security/payload"
 	postgresstore "github.com/Zhiruosama/Email-Service/internal/storage/postgres"
 	"github.com/Zhiruosama/Email-Service/internal/testkit/postgrescontainer"
@@ -103,15 +104,17 @@ func TestEmailSubmissionIsAtomicIdempotentAndEncrypted(t *testing.T) {
 	}
 
 	var (
-		encryptedPayload []byte
-		metadataText     string
-		messageCount     int
-		outboxCount      int
+		encryptedPayload   []byte
+		metadataText       string
+		messageCount       int
+		outboxCount        int
+		deliveryEventCount int
 	)
 	if err := pool.QueryRow(ctx, `
 		SELECT encrypted_payload, submission_metadata::text,
 		       (SELECT count(*) FROM mail_messages WHERE tenant_id = $1),
-		       (SELECT count(*) FROM outbox_events WHERE aggregate_id = $2)
+		       (SELECT count(*) FROM outbox_events WHERE aggregate_id = $2),
+		       (SELECT count(*) FROM delivery_events WHERE message_id = $2)
 		FROM mail_messages
 		WHERE id = $2
 	`, submissionTenantID, messageID).Scan(
@@ -119,11 +122,12 @@ func TestEmailSubmissionIsAtomicIdempotentAndEncrypted(t *testing.T) {
 		&metadataText,
 		&messageCount,
 		&outboxCount,
+		&deliveryEventCount,
 	); err != nil {
 		t.Fatalf("inspect persisted submission: %v", err)
 	}
-	if messageCount != 1 || outboxCount != 3 {
-		t.Fatalf("message/outbox counts = %d/%d, want 1/3", messageCount, outboxCount)
+	if messageCount != 1 || outboxCount != 3 || deliveryEventCount != 2 {
+		t.Fatalf("message/outbox/event counts = %d/%d/%d, want 1/3/2", messageCount, outboxCount, deliveryEventCount)
 	}
 	if bytes.Contains(encryptedPayload, []byte("123456")) || metadataText != `{"request_source": "ai-nexus"}` {
 		t.Fatalf("unexpected stored payload or metadata: ciphertext=%x metadata=%s", encryptedPayload, metadataText)
@@ -139,6 +143,45 @@ func TestEmailSubmissionIsAtomicIdempotentAndEncrypted(t *testing.T) {
 	}
 	if secretInOutbox {
 		t.Fatal("verification code leaked into outbox")
+	}
+	var matchedIdentities int
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*)
+		FROM delivery_events d
+		JOIN outbox_events o ON o.id = d.id
+		WHERE d.message_id = $1
+	`, messageID).Scan(&matchedIdentities); err != nil {
+		t.Fatalf("compare journal/outbox identities: %v", err)
+	}
+	if matchedIdentities != 2 {
+		t.Fatalf("matching journal/outbox identities = %d, want 2", matchedIdentities)
+	}
+	var acceptedEventID string
+	var acceptedOccurredAt time.Time
+	if err := pool.QueryRow(ctx, `
+		SELECT id, occurred_at
+		FROM delivery_events
+		WHERE message_id = $1 AND sequence = 1
+	`, messageID).Scan(&acceptedEventID, &acceptedOccurredAt); err != nil {
+		t.Fatalf("read accepted journal event: %v", err)
+	}
+	journalRepository := postgresstore.NewDeliveryEventRepository(pool)
+	acceptedEvent := ports.DeliveryEvent{
+		ID:             acceptedEventID,
+		TenantID:       submissionTenantID,
+		MessageID:      messageID,
+		IdempotencyKey: command.IdempotencyKey,
+		Status:         message.StatusAccepted,
+		Sequence:       1,
+		OccurredAt:     acceptedOccurredAt,
+	}
+	if err := journalRepository.Append(ctx, []ports.DeliveryEvent{acceptedEvent}); err != nil {
+		t.Fatalf("idempotently append same journal event: %v", err)
+	}
+	conflictingEvent := acceptedEvent
+	conflictingEvent.Status = message.StatusQueued
+	if err := journalRepository.Append(ctx, []ports.DeliveryEvent{conflictingEvent}); !errors.Is(err, ports.ErrDeliveryEventConflict) {
+		t.Fatalf("conflicting journal event error = %v, want ErrDeliveryEventConflict", err)
 	}
 }
 

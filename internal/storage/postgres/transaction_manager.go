@@ -60,6 +60,7 @@ func (m *TransactionManager) WithinTransaction(
 		clock:            NewTransactionClock(tx),
 		messages:         NewMessageRepository(tx),
 		deliveryAttempts: NewDeliveryAttemptRepository(tx),
+		deliveryEvents:   NewDeliveryEventRepository(tx),
 		outbox:           NewOutboxRepository(tx),
 		dueMessages:      NewDueMessageRepository(tx),
 		outboxDeliveries: NewOutboxDeliveryRepository(tx),
@@ -87,6 +88,7 @@ type postgresUnitOfWork struct {
 	clock            ports.TransactionClock
 	messages         ports.MessageRepository
 	deliveryAttempts ports.DeliveryAttemptRepository
+	deliveryEvents   ports.DeliveryEventRepository
 	outbox           ports.OutboxRepository
 	dueMessages      ports.DueMessageRepository
 	outboxDeliveries ports.OutboxDeliveryRepository
@@ -98,6 +100,10 @@ func (u *postgresUnitOfWork) Messages() ports.MessageRepository { return u.messa
 
 func (u *postgresUnitOfWork) DeliveryAttempts() ports.DeliveryAttemptRepository {
 	return u.deliveryAttempts
+}
+
+func (u *postgresUnitOfWork) DeliveryEvents() ports.DeliveryEventRepository {
+	return u.deliveryEvents
 }
 
 func (u *postgresUnitOfWork) Outbox() ports.OutboxRepository { return u.outbox }

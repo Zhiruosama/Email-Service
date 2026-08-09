@@ -176,11 +176,14 @@ func (s *EmailSubmissionService) Submit(
 			result = SubmitEmailResult{Disposition: SubmitEmailDuplicate, Record: persisted.Record}
 			return nil
 		}
-		events, mapErr := mapMessageEvents(record, aggregate.PendingEvents())
+		mapped, mapErr := mapAllMessageEvents(record, aggregate.PendingEvents())
 		if mapErr != nil {
 			return mapErr
 		}
-		if appendErr := unit.Outbox().Append(ctx, events); appendErr != nil {
+		if appendErr := unit.DeliveryEvents().Append(ctx, mapped.Delivery); appendErr != nil {
+			return appendErr
+		}
+		if appendErr := unit.Outbox().Append(ctx, mapped.Outbox); appendErr != nil {
 			return appendErr
 		}
 		created = aggregate

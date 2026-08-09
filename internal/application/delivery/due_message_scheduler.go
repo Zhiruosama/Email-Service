@@ -67,6 +67,7 @@ func (s *DueMessageScheduler) RunOnce(ctx context.Context) (SchedulerBatchResult
 
 		candidateResult := SchedulerBatchResult{Claimed: uint32(len(records))}
 		outboxEvents := make([]ports.OutboxEvent, 0, len(records)*2)
+		deliveryEvents := make([]ports.DeliveryEvent, 0, len(records))
 		candidates := make([]*message.Message, 0, len(records))
 
 		for _, record := range records {
@@ -91,17 +92,21 @@ func (s *DueMessageScheduler) RunOnce(ctx context.Context) (SchedulerBatchResult
 				candidateResult.Queued++
 			}
 
-			events, mapErr := mapMessageEvents(record, aggregate.PendingEvents())
+			mapped, mapErr := mapAllMessageEvents(record, aggregate.PendingEvents())
 			if mapErr != nil {
 				return mapErr
 			}
 			if _, saveErr := unit.Messages().Save(ctx, aggregate); saveErr != nil {
 				return saveErr
 			}
-			outboxEvents = append(outboxEvents, events...)
+			outboxEvents = append(outboxEvents, mapped.Outbox...)
+			deliveryEvents = append(deliveryEvents, mapped.Delivery...)
 			candidates = append(candidates, aggregate)
 		}
 
+		if err := unit.DeliveryEvents().Append(ctx, deliveryEvents); err != nil {
+			return err
+		}
 		if err := unit.Outbox().Append(ctx, outboxEvents); err != nil {
 			return err
 		}

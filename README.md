@@ -19,8 +19,9 @@ Consumer Adapter 也已完成。Composition Root 已将这些组件装配为可�
 动态 gRPC liveness/readiness。可靠受理应用内核也已完成：模板版本固定、规范化 Payload
 HMAC 幂等指纹、AES-GCM 加密，以及 Message + Submission + Outbox 同事务持久化。
 `SubmitEmail/GetEmail` gRPC、固定开发租户身份边界、验证码模板目录和标准错误映射也已接入，
-真实纵向测试从 gRPC Submit 跑到 Fake Provider 再由 gRPC Get 查询。下一阶段为可靠状态通知
-与 AI-Nexus 回调联调。
+真实纵向测试从 gRPC Submit 跑到 Fake Provider 再由 gRPC Get 查询。Delivery Event Journal
+也已完成，Message、不可变状态历史与 lifecycle Outbox 在同一事务提交，并共享稳定 event ID。
+下一阶段为 Notification Worker 与 AI-Nexus 回调联调。
 
 ## 设计文档
 

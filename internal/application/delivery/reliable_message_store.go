@@ -22,6 +22,13 @@ type ReliableMessageStore struct {
 	transactor ports.Transactor
 }
 
+var deliveryEventNamespace = uuid.MustParse("31ac7d78-5960-4bd4-b6ce-3fbeb3a7d66f")
+
+type mappedMessageEvents struct {
+	Outbox   []ports.OutboxEvent
+	Delivery []ports.DeliveryEvent
+}
+
 func NewReliableMessageStore(transactor ports.Transactor) *ReliableMessageStore {
 	if transactor == nil {
 		panic("delivery: nil transactor")
@@ -36,7 +43,7 @@ func (s *ReliableMessageStore) Create(
 	if err := record.ValidateForCreate(); err != nil {
 		return ports.CreateMessageResult{}, err
 	}
-	events, err := mapMessageEvents(record, record.Message.PendingEvents())
+	mapped, err := mapAllMessageEvents(record, record.Message.PendingEvents())
 	if err != nil {
 		return ports.CreateMessageResult{}, err
 	}
@@ -51,7 +58,10 @@ func (s *ReliableMessageStore) Create(
 		if created.Disposition == ports.CreateDispositionDuplicate {
 			return nil
 		}
-		return unit.Outbox().Append(ctx, events)
+		if appendErr := unit.DeliveryEvents().Append(ctx, mapped.Delivery); appendErr != nil {
+			return appendErr
+		}
+		return unit.Outbox().Append(ctx, mapped.Outbox)
 	})
 	if err != nil {
 		return ports.CreateMessageResult{}, err
@@ -69,7 +79,7 @@ func (s *ReliableMessageStore) Save(
 	if err := record.Validate(); err != nil {
 		return 0, err
 	}
-	events, err := mapMessageEvents(record, record.Message.PendingEvents())
+	mapped, err := mapAllMessageEvents(record, record.Message.PendingEvents())
 	if err != nil {
 		return 0, err
 	}
@@ -81,7 +91,10 @@ func (s *ReliableMessageStore) Save(
 			return saveErr
 		}
 		persistedVersion = version
-		return unit.Outbox().Append(ctx, events)
+		if appendErr := unit.DeliveryEvents().Append(ctx, mapped.Delivery); appendErr != nil {
+			return appendErr
+		}
+		return unit.Outbox().Append(ctx, mapped.Outbox)
 	})
 	if err != nil {
 		return 0, err
@@ -94,16 +107,48 @@ func mapMessageEvents(
 	record ports.MessageRecord,
 	events []message.Event,
 ) ([]ports.OutboxEvent, error) {
+	mapped, err := mapAllMessageEvents(record, events)
+	return mapped.Outbox, err
+}
+
+func mapAllMessageEvents(
+	record ports.MessageRecord,
+	events []message.Event,
+) (mappedMessageEvents, error) {
 	if len(events) == 0 {
-		return nil, ErrNoPendingMessageEvents
+		return mappedMessageEvents{}, ErrNoPendingMessageEvents
 	}
-	mapped := make([]ports.OutboxEvent, 0, len(events))
+	mapped := mappedMessageEvents{
+		Outbox:   make([]ports.OutboxEvent, 0, len(events)),
+		Delivery: make([]ports.DeliveryEvent, 0, len(events)),
+	}
 	for _, event := range events {
 		outboxEvent, err := mapMessageEvent(record, event)
 		if err != nil {
-			return nil, err
+			return mappedMessageEvents{}, err
 		}
-		mapped = append(mapped, outboxEvent)
+		mapped.Outbox = append(mapped.Outbox, outboxEvent)
+		if event.Kind == message.EventMessageAccepted || event.Kind == message.EventStatusChanged {
+			deliveryEvent := ports.DeliveryEvent{
+				ID:                outboxEvent.ID,
+				TenantID:          record.TenantID,
+				MessageID:         event.MessageID,
+				IdempotencyKey:    record.IdempotencyKey,
+				Status:            event.To,
+				Sequence:          event.Sequence,
+				AttemptNumber:     event.AttemptNumber,
+				ProviderMessageID: event.ProviderMessageID,
+				OccurredAt:        event.OccurredAt.UTC(),
+			}
+			if event.Failure.Category.Valid() {
+				failure := event.Failure
+				deliveryEvent.Failure = &failure
+			}
+			if err := deliveryEvent.Validate(); err != nil {
+				return mappedMessageEvents{}, fmt.Errorf("%w: map delivery event: %v", ErrMessageEventMapping, err)
+			}
+			mapped.Delivery = append(mapped.Delivery, deliveryEvent)
+		}
 	}
 	return mapped, nil
 }
@@ -151,7 +196,7 @@ func mapMessageEvent(
 		return ports.OutboxEvent{}, fmt.Errorf("%w: encode payload", ErrMessageEventMapping)
 	}
 	outboxEvent := ports.OutboxEvent{
-		ID:                 uuid.NewString(),
+		ID:                 stableMessageEventID(event),
 		AggregateType:      ports.OutboxAggregateMailMessage,
 		AggregateID:        event.MessageID,
 		EventType:          string(event.Kind),
@@ -163,6 +208,17 @@ func mapMessageEvent(
 		return ports.OutboxEvent{}, fmt.Errorf("%w: %v", ErrMessageEventMapping, err)
 	}
 	return outboxEvent, nil
+}
+
+func stableMessageEventID(event message.Event) string {
+	identity := fmt.Sprintf(
+		"mail-message/%s/%s/%d/%d",
+		event.MessageID,
+		event.Kind,
+		event.Sequence,
+		event.DispatchGeneration,
+	)
+	return uuid.NewSHA1(deliveryEventNamespace, []byte(identity)).String()
 }
 
 func knownMessageEventKind(kind message.EventKind) bool {

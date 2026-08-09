@@ -70,8 +70,8 @@ func TestDeliveryCoreMigration(t *testing.T) {
 		`).Scan(&version); err != nil {
 			t.Fatalf("query migration version: %v", err)
 		}
-		if version != 3 {
-			t.Fatalf("migration version = %d, want 3", version)
+		if version != 4 {
+			t.Fatalf("migration version = %d, want 4", version)
 		}
 	})
 
@@ -364,6 +364,8 @@ func TestDeliveryCoreMigration(t *testing.T) {
 
 	t.Run("creates scheduler and relay indexes", func(t *testing.T) {
 		want := map[string]bool{
+			"delivery_events_message_sequence_idx":     false,
+			"delivery_events_tenant_observed_idx":      false,
 			"delivery_attempts_message_started_idx":    false,
 			"delivery_attempts_unfinished_started_idx": false,
 			"mail_messages_scheduled_due_idx":          false,
@@ -407,6 +409,7 @@ func TestDeliveryCoreMigration(t *testing.T) {
 	assertTableMissing(t, ctx, db, "mail_messages")
 	assertTableMissing(t, ctx, db, "outbox_events")
 	assertTableMissing(t, ctx, db, "delivery_attempts")
+	assertTableMissing(t, ctx, db, "delivery_events")
 
 	if err := goose.UpContext(ctx, db, "sql"); err != nil {
 		t.Fatalf("reapply migration after rollback: %v", err)
@@ -415,6 +418,7 @@ func TestDeliveryCoreMigration(t *testing.T) {
 	assertTablePresent(t, ctx, db, "mail_messages")
 	assertTablePresent(t, ctx, db, "outbox_events")
 	assertTablePresent(t, ctx, db, "delivery_attempts")
+	assertTablePresent(t, ctx, db, "delivery_events")
 }
 
 func insertTenant(t *testing.T, ctx context.Context, db *sql.DB, id, key string) {

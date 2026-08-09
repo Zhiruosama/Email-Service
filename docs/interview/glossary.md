@@ -172,3 +172,14 @@ UTC 时间和 JSON key 稳定排序。幂等指纹必须基于规范化结果，
 
 数据落到持久化介质前加密。本项目只在数据库明文保存安全查询所需的模板标识和脱敏邮箱，
 原始邮箱、display name 与模板变量保存在 AES-GCM 密文中；密钥不进入业务数据库。
+
+## Event Journal
+
+只追加、不覆盖的领域事实历史。Message Snapshot 用于高效读取当前状态，Journal 用于审计、
+通知、查询和对账。本项目的 Message、Delivery Event Journal 和 lifecycle Outbox 在同一事务
+提交，但没有采用完整 Event Sourcing 重放模型。
+
+## Deterministic Event ID
+
+由稳定 namespace 和事件业务身份生成的 UUID，同一领域事实重算时 ID 不变。它用于下游至少
+一次投递幂等；不能替代认证或签名。`event_id` 防重复，`sequence` 防乱序。

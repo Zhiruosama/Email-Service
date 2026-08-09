@@ -56,6 +56,38 @@ func TestMapMessageEventsUsesSafeAllowlist(t *testing.T) {
 	}
 }
 
+func TestMapAllMessageEventsCreatesStableJournalIdentity(t *testing.T) {
+	record := deliveryTestRecord(t, "80000000-0000-4000-8000-000000000010")
+	first, err := mapAllMessageEvents(record, record.Message.PendingEvents())
+	if err != nil {
+		t.Fatalf("map first: %v", err)
+	}
+	second, err := mapAllMessageEvents(record, record.Message.PendingEvents())
+	if err != nil {
+		t.Fatalf("map second: %v", err)
+	}
+	if len(first.Outbox) != 3 || len(first.Delivery) != 2 {
+		t.Fatalf("outbox/delivery counts = %d/%d, want 3/2", len(first.Outbox), len(first.Delivery))
+	}
+	for index := range first.Outbox {
+		if first.Outbox[index].ID != second.Outbox[index].ID {
+			t.Fatalf("event %d ID changed across mapping", index)
+		}
+	}
+	for _, journal := range first.Delivery {
+		matched := false
+		for _, outbox := range first.Outbox {
+			if outbox.ID == journal.ID {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			t.Fatalf("journal event %s has no matching outbox identity", journal.ID)
+		}
+	}
+}
+
 func TestMapMessageEventIncludesSanitizedFailure(t *testing.T) {
 	record := deliveryTestRecord(t, "80000000-0000-4000-8000-000000000002")
 	now := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)

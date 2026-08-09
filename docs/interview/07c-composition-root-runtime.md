@@ -88,7 +88,7 @@ MAIL_PROVIDER=fake
 2. 设置 min/max connections、connect timeout、lifetime、idle time 和 lifetime jitter；
 3. `Ping` PostgreSQL；
 4. 使用 `to_regclass` 确认 `tenants`、`mail_messages`、`outbox_events`、
-   `delivery_attempts` 四张表都存在，并确认 Goose schema version 至少为 3。
+   `delivery_attempts`、`delivery_events` 等核心表存在，并确认 Goose schema version 至少为 4。
 
 数据库可以 Ping 但 migration 未执行时，服务拒绝启动。这避免 Scheduler/Relay 启动后不停
 报告“relation does not exist”，同时 readiness 却错误显示健康。

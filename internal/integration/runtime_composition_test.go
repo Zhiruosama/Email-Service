@@ -231,16 +231,18 @@ func waitForRuntimeDelivery(
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		var status string
-		var attempts, pendingOutbox int
+		var attempts, pendingOutbox, deliveryEvents int
 		err := pool.QueryRow(context.Background(), `
 SELECT
     m.status,
     (SELECT count(*) FROM delivery_attempts a WHERE a.message_id = m.id),
-    (SELECT count(*) FROM outbox_events o WHERE o.aggregate_id = m.id AND o.status = 'PENDING')
+    (SELECT count(*) FROM outbox_events o WHERE o.aggregate_id = m.id AND o.status = 'PENDING'),
+    (SELECT count(*) FROM delivery_events e WHERE e.message_id = m.id)
 FROM mail_messages m
 WHERE m.id = $1
-`, messageID).Scan(&status, &attempts, &pendingOutbox)
-		if err == nil && status == string(message.StatusProviderAccepted) && attempts == 1 && pendingOutbox == 0 {
+`, messageID).Scan(&status, &attempts, &pendingOutbox, &deliveryEvents)
+		if err == nil && status == string(message.StatusProviderAccepted) &&
+			attempts == 1 && pendingOutbox == 0 && deliveryEvents == 4 {
 			return
 		}
 		time.Sleep(25 * time.Millisecond)

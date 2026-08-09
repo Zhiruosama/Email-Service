@@ -267,7 +267,8 @@ SELECT
     to_regclass('public.tenants') IS NOT NULL
     AND to_regclass('public.mail_messages') IS NOT NULL
     AND to_regclass('public.outbox_events') IS NOT NULL
-	AND to_regclass('public.delivery_attempts') IS NOT NULL,
+	AND to_regclass('public.delivery_attempts') IS NOT NULL
+	AND to_regclass('public.delivery_events') IS NOT NULL,
     CASE
         WHEN to_regclass('public.goose_db_version') IS NULL THEN 0
         ELSE (SELECT COALESCE(max(version_id) FILTER (WHERE is_applied), 0) FROM goose_db_version)
@@ -277,7 +278,7 @@ SELECT
 	if err := pool.QueryRow(ctx, query).Scan(&complete, &version); err != nil {
 		return err
 	}
-	if !complete || version < 3 {
+	if !complete || version < 4 {
 		return errors.New("required schema is missing")
 	}
 	return nil
@@ -289,6 +290,8 @@ func isFatalSchedulerError(err error) bool {
 		errors.Is(err, deliveryapp.ErrNoPendingMessageEvents) ||
 		errors.Is(err, ports.ErrCorruptMessageRecord) ||
 		errors.Is(err, ports.ErrInvalidMessageRecord) ||
+		errors.Is(err, ports.ErrInvalidDeliveryEvent) ||
+		errors.Is(err, ports.ErrDeliveryEventConflict) ||
 		errors.Is(err, ports.ErrInvalidOutboxEvent)
 }
 
