@@ -27,7 +27,10 @@ Notification Worker 核心和 gRPC Callback Client 现已完成：它按 event I
 SubmitEmail 一直运行到四条状态 gRPC Callback。投递前的 Delivery Material 链路现也已完成：
 Worker 在数据库事务外认证解密 Payload、校验不可变身份、渲染固定模板并生成 UTF-8
 multipart/alternative MIME，明文不进入数据库、Outbox、Fake Provider 观测记录或错误码。
-下一阶段为真实 SMTP Provider、SMTP 错误分类以及 Provider 级限流/熔断。
+SMTP Provider 核心也已完成：支持 implicit TLS、LOGIN/PLAIN 授权、阶段化超时和 4xx/5xx
+错误归一化，并把 DATA 最终响应丢失建模为 `SUBMISSION_UNKNOWN`。Composition Root 可显式选择
+`fake` 或 `smtp`，普通测试永远不会连接真实服务器。下一步先由人工显式执行一次 QQ SMTP
+smoke test，再实现 Provider 级限流、熔断与并发舱壁。
 
 ## 设计文档
 
@@ -93,7 +96,7 @@ set +a
 make run
 ```
 
-当前必须显式配置 `MAIL_PROVIDER=fake`、`MAIL_GRPC_ALLOW_INSECURE=true` 和
+默认开发模式必须显式配置 `MAIL_PROVIDER=fake`、`MAIL_GRPC_ALLOW_INSECURE=true` 和
 `MAIL_CALLBACK_GRPC_ALLOW_INSECURE=true`；它们只用于本地
 投递编排。Fake Provider 会完整执行解密、模板渲染与 MIME 构建，但不会建立 SMTP 连接或真实
 发送邮件，也不构成生产认证。`MAIL_DEV_TENANT_ID` 由进程固定注入，不能
@@ -130,3 +133,11 @@ make test-integration
 普通 `go test ./...` 不依赖 Docker；只有 integration build tag 会启动一次性 PostgreSQL
 或 RabbitMQ 容器。RabbitMQ 集成测试会验证 Publisher Confirm、消息持久化、Consumer
 Manual ACK、延迟重试、DLQ，以及 Broker 应用重启后的客户端重连。
+
+### 显式 SMTP 模式
+
+只有把 `MAIL_PROVIDER` 改为 `smtp` 时，进程才会要求并使用 `.env.example` 中的
+`MAIL_SMTP_*` 配置。SMTP Adapter 采用按需连接，应用启动不会连接或发送邮件。真实 smoke test
+还受到 build tag 和环境开关双重保护：必须主动导出本地 `.env`，把
+`MAIL_SMTP_REAL_TEST_ENABLED` 改为 `true`，再执行 `make test-smtp-real`。普通 `make test`、
+`make test-integration` 和 `make run` 不会触发这个测试。授权码不得提交到 Git。

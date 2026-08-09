@@ -16,6 +16,7 @@ import (
 	consumerrabbit "github.com/Zhiruosama/Email-Service/internal/consumer/rabbitmq"
 	"github.com/Zhiruosama/Email-Service/internal/content/mimebuilder"
 	providerfake "github.com/Zhiruosama/Email-Service/internal/provider/fake"
+	providersmtp "github.com/Zhiruosama/Email-Service/internal/provider/smtp"
 	publisherabbit "github.com/Zhiruosama/Email-Service/internal/publisher/rabbitmq"
 	payloadsecurity "github.com/Zhiruosama/Email-Service/internal/security/payload"
 	senderstatic "github.com/Zhiruosama/Email-Service/internal/sender/static"
@@ -113,13 +114,13 @@ func NewApp(ctx context.Context, config Config, logger *slog.Logger) (*App, erro
 	templates := templatecatalog.NewVerificationCatalog(
 		config.SubmissionSecurity.DevelopmentTenantID,
 	)
+	provider, senderIdentity, err := newEmailProvider(config)
+	if err != nil {
+		return nil, err
+	}
 	senders, err := senderstatic.New(
 		config.SubmissionSecurity.DevelopmentTenantID,
-		ports.SenderIdentity{
-			Key:         templatecatalog.AINexusSenderIdentityKey,
-			Address:     "no-reply@example.invalid",
-			DisplayName: "AI Nexus",
-		},
+		senderIdentity,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("%w: create sender identity resolver", ErrStartup)
@@ -130,7 +131,6 @@ func NewApp(ctx context.Context, config Config, logger *slog.Logger) (*App, erro
 		senders,
 		mimebuilder.New(),
 	)
-	provider := providerfake.New(nil)
 	worker, err := deliveryapp.NewDispatchWorker(
 		transactor,
 		provider,
@@ -233,6 +233,28 @@ func NewApp(ctx context.Context, config Config, logger *slog.Logger) (*App, erro
 	cleanupSubscriber = false
 	cleanupPool = false
 	return app, nil
+}
+
+func newEmailProvider(config Config) (ports.EmailProvider, ports.SenderIdentity, error) {
+	senderIdentity := ports.SenderIdentity{
+		Key:         templatecatalog.AINexusSenderIdentityKey,
+		Address:     "no-reply@example.invalid",
+		DisplayName: "AI Nexus",
+	}
+	switch config.Provider {
+	case FakeProvider:
+		return providerfake.New(nil), senderIdentity, nil
+	case SMTPProvider:
+		senderIdentity.Address = config.SMTP.FromAddress
+		senderIdentity.DisplayName = config.SMTP.FromName
+		provider, err := providersmtp.New(config.SMTP)
+		if err != nil {
+			return nil, ports.SenderIdentity{}, fmt.Errorf("%w: create SMTP provider", ErrStartup)
+		}
+		return provider, senderIdentity, nil
+	default:
+		return nil, ports.SenderIdentity{}, fmt.Errorf("%w: unsupported provider", ErrStartup)
+	}
 }
 
 func (a *App) Run(ctx context.Context) error {

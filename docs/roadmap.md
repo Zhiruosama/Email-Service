@@ -68,9 +68,10 @@
 - 已完成：加密 Payload 认证解密与不可变身份交叉校验；
 - 已完成：固定版本模板渲染、HTML + Plain Text MIME；
 - 已完成：构建失败的可重试/永久失败分流；
-- SMTP Provider；
-- QQ SMTP 配置；
-- 超时和错误分类；
+- 已完成：implicit TLS SMTP Provider 与 LOGIN/PLAIN 授权；
+- 已完成：QQ SMTP 配置加载与运行时显式 Provider 选择；
+- 已完成：协议阶段超时、4xx/5xx 与 DATA 不确定结果分类；
+- 待人工验证：双重显式授权的 QQ SMTP smoke test；
 - Provider 级限速；
 - 熔断和舱壁；
 - Retry Scheduler；

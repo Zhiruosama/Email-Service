@@ -102,7 +102,7 @@ func TestConfigRejectsInvalidOverrides(t *testing.T) {
 	}{
 		{name: "duration syntax", key: "MAIL_PROVIDER_TIMEOUT", value: "soon"},
 		{name: "integer syntax", key: "MAIL_CONSUMER_LANES", value: "many"},
-		{name: "unsupported provider", key: "MAIL_PROVIDER", value: "smtp"},
+		{name: "unsupported provider", key: "MAIL_PROVIDER", value: "unsupported"},
 		{name: "unsafe instance", key: "MAIL_INSTANCE_ID", value: "bad/id"},
 		{name: "pool bounds", key: "MAIL_DATABASE_MIN_CONNS", value: "100"},
 		{name: "consumer shutdown", key: "MAIL_CONSUMER_SHUTDOWN_TIMEOUT", value: "50s"},
@@ -126,6 +126,67 @@ func TestConfigRejectsInvalidOverrides(t *testing.T) {
 				t.Fatalf("load error = %v, want ErrInvalidConfig", err)
 			}
 		})
+	}
+}
+
+func TestLoadSMTPConfigOnlyWhenSelected(t *testing.T) {
+	t.Parallel()
+	environment := validConfigEnvironment()
+	environment["MAIL_PROVIDER"] = SMTPProvider
+	environment["MAIL_SMTP_HOST"] = "smtp.qq.com"
+	environment["MAIL_SMTP_PORT"] = "465"
+	environment["MAIL_SMTP_SECURITY"] = "implicit_tls"
+	environment["MAIL_SMTP_USERNAME"] = "sender@qq.com"
+	environment["MAIL_SMTP_AUTH_CODE"] = "test-authorization-code"
+	environment["MAIL_SMTP_FROM_ADDRESS"] = "sender@qq.com"
+	environment["MAIL_SMTP_FROM_NAME"] = "AI Nexus"
+
+	config, err := loadConfig(mapLookup(environment), "test-host")
+	if err != nil {
+		t.Fatalf("load SMTP config: %v", err)
+	}
+	if config.Provider != SMTPProvider || config.SMTP.AuthMethod != "login" ||
+		config.SMTP.Address() != "smtp.qq.com:465" || config.SMTP.FromName != "AI Nexus" {
+		t.Fatalf(
+			"unexpected SMTP safe config: provider=%q address=%q auth=%q from_name=%q",
+			config.Provider,
+			config.SMTP.Address(),
+			config.SMTP.AuthMethod,
+			config.SMTP.FromName,
+		)
+	}
+
+	for _, missing := range []string{
+		"MAIL_SMTP_HOST",
+		"MAIL_SMTP_PORT",
+		"MAIL_SMTP_SECURITY",
+		"MAIL_SMTP_USERNAME",
+		"MAIL_SMTP_AUTH_CODE",
+		"MAIL_SMTP_FROM_ADDRESS",
+	} {
+		missingEnvironment := cloneEnvironment(environment)
+		delete(missingEnvironment, missing)
+		_, err := loadConfig(mapLookup(missingEnvironment), "test-host")
+		if !errors.Is(err, ErrInvalidConfig) {
+			t.Fatalf("missing %s error = %v, want ErrInvalidConfig", missing, err)
+		}
+	}
+}
+
+func TestLoadSMTPConfigDoesNotLeakAuthorizationCode(t *testing.T) {
+	t.Parallel()
+	environment := validConfigEnvironment()
+	environment["MAIL_PROVIDER"] = SMTPProvider
+	environment["MAIL_SMTP_HOST"] = "smtp.qq.com"
+	environment["MAIL_SMTP_PORT"] = "465"
+	environment["MAIL_SMTP_SECURITY"] = "implicit_tls"
+	environment["MAIL_SMTP_USERNAME"] = "sender@qq.com"
+	secret := "do-not-print-this-smtp-code"
+	environment["MAIL_SMTP_AUTH_CODE"] = secret + "\n"
+	environment["MAIL_SMTP_FROM_ADDRESS"] = "sender@qq.com"
+	_, err := loadConfig(mapLookup(environment), "test-host")
+	if !errors.Is(err, ErrInvalidConfig) || strings.Contains(err.Error(), secret) {
+		t.Fatalf("unsafe SMTP configuration error: %v", err)
 	}
 }
 

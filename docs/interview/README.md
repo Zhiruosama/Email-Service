@@ -31,7 +31,8 @@ Mail Service 从零到可上线的每一个开发阶段。
 | 08-B2A | Notification Worker 核心与 gRPC Callback Client | 已完成 | [Notification Worker 与 gRPC Client](08b2a-notification-worker-grpc-client.md) |
 | 08-B2B | Lifecycle Consumer、通知重试与 DLQ | 已完成 | [Lifecycle Consumer 与通知可靠性](08b2b-lifecycle-consumer-runtime.md) |
 | 09-A1 | Payload 解密、模板渲染与 MIME | 已完成 | [Delivery Material 与 MIME](09a1-delivery-material-mime.md) |
-| 09-A2 | QQ SMTP Provider 与错误分类 | 未开始 | 完成后新增 |
+| 09-A2A | SMTP Provider 核心与错误分类 | 已完成 | [SMTP Provider 核心](09a2a-smtp-provider-core.md) |
+| 09-A2B | QQ SMTP 真实 smoke test | 待人工确认 | 09-A2A 文档第 10 节 |
 | 09-B | Provider 限流、熔断与舱壁 | 未开始 | 完成后新增 |
 | 10 | 多租户、模板和生产化 | 未开始 | 完成后新增 |
 
@@ -56,7 +57,8 @@ Mail Service 从零到可上线的每一个开发阶段。
 17. [Notification Worker 核心与 gRPC Callback Client](08b2a-notification-worker-grpc-client.md)
 18. [Lifecycle Consumer、通知重试/DLQ 与运行时装配](08b2b-lifecycle-consumer-runtime.md)
 19. [Payload 解密、模板渲染与安全 MIME](09a1-delivery-material-mime.md)
-20. [核心术语速查](glossary.md)
+20. [SMTP Provider 核心与失败语义](09a2a-smtp-provider-core.md)
+21. [核心术语速查](glossary.md)
 
 ## 每阶段固定记录结构
 

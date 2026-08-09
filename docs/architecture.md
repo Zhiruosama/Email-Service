@@ -140,7 +140,11 @@ Scheduler、Relay、Publisher、Worker、Consumer、标准 gRPC Health 与 Submi
 Builder：它认证解密受理 Payload，交叉校验不可变安全字段，按固定模板版本分别渲染 HTML 与
 Plain Text，再生成有边界和大小限制的 UTF-8 `multipart/alternative` MIME。Provider Request
 因此包含派发元数据和一次性 Delivery Material；收件地址和 MIME 只在同步 Provider 调用期间
-存在，不进入 Outbox、Attempt、Journal 或普通日志。Provider Router 仍待控制面阶段接入。
+存在，不进入 Outbox、Attempt、Journal 或普通日志。09-A2A 已实现第一版 SMTP Provider：
+Composition Root 可显式选择 Fake 或 SMTP；SMTP Adapter 通过 implicit TLS 和 LOGIN/PLAIN
+完成单收件人会话，把每个协议阶段的状态归一化为稳定 Failure，并在 DATA 最终响应丢失时返回
+`SUBMISSION_UNKNOWN`。Provider 采用按需连接且不参与启动 readiness；连接复用、限流、熔断、
+舱壁和 Provider Router 仍待后续阶段接入。
 
 ### 3.5 Provider Router
 

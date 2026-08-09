@@ -13,7 +13,7 @@ PROTO_FILES := $(shell find $(PROTO_DIR) -type f -name '*.proto' | sort)
 PROTOC_GEN_GO := $(shell $(GO) tool -n protoc-gen-go)
 PROTOC_GEN_GO_GRPC := $(shell $(GO) tool -n protoc-gen-go-grpc)
 
-.PHONY: help build run generate buf-generate proto-check proto-format-check proto-lint format test test-integration check check-all infra-up infra-down infra-status db-up db-down db-status db-dev-seed mq-up mq-down mq-status mq-policy-apply mq-policy-status migrate-up migrate-down migrate-status migrate-validate
+.PHONY: help build run generate buf-generate proto-check proto-format-check proto-lint format test test-integration test-smtp-real check check-all infra-up infra-down infra-status db-up db-down db-status db-dev-seed mq-up mq-down mq-status mq-policy-apply mq-policy-status migrate-up migrate-down migrate-status migrate-validate
 
 help:
 	@echo "build        Build the mail-service binary"
@@ -26,6 +26,7 @@ help:
 	@echo "format       Format Go source files"
 	@echo "test         Run Go tests"
 	@echo "test-integration Run PostgreSQL and RabbitMQ integration tests through Testcontainers"
+	@echo "test-smtp-real Send one explicitly authorized real SMTP smoke-test email"
 	@echo "check        Run schema compilation, generation, formatting, and tests"
 	@echo "check-all    Run Buf lint followed by check"
 	@echo "infra-up     Start PostgreSQL and RabbitMQ and wait until healthy"
@@ -92,6 +93,13 @@ test:
 
 test-integration:
 	TEST_POSTGRES_IMAGE=$(POSTGRES_IMAGE) TEST_RABBITMQ_IMAGE=$(RABBITMQ_IMAGE) $(GO) test -tags=integration ./internal/integration/...
+
+test-smtp-real:
+	@if [ "$${MAIL_SMTP_REAL_TEST_ENABLED:-false}" != "true" ]; then \
+		echo "refusing real SMTP test: set MAIL_SMTP_REAL_TEST_ENABLED=true explicitly"; \
+		exit 1; \
+	fi
+	$(GO) test -tags=real_smtp ./internal/provider/smtp -run '^TestRealQQSMTP$$' -count=1
 
 infra-up:
 	POSTGRES_IMAGE=$(POSTGRES_IMAGE) RABBITMQ_IMAGE=$(RABBITMQ_IMAGE) \

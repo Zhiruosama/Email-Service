@@ -18,12 +18,16 @@ import (
 	notificationapp "github.com/Zhiruosama/Email-Service/internal/application/notification"
 	"github.com/Zhiruosama/Email-Service/internal/application/ports"
 	consumerrabbit "github.com/Zhiruosama/Email-Service/internal/consumer/rabbitmq"
+	providersmtp "github.com/Zhiruosama/Email-Service/internal/provider/smtp"
 	publisherabbit "github.com/Zhiruosama/Email-Service/internal/publisher/rabbitmq"
 	"github.com/Zhiruosama/Email-Service/internal/subscriber/grpcsubscriber"
 	"github.com/google/uuid"
 )
 
-const FakeProvider = "fake"
+const (
+	FakeProvider = "fake"
+	SMTPProvider = providersmtp.ProviderKey
+)
 
 var ErrInvalidConfig = errors.New("invalid service configuration")
 
@@ -73,6 +77,7 @@ type Config struct {
 	HealthInterval     time.Duration
 	HealthTimeout      time.Duration
 	SubmissionSecurity SubmissionSecurityConfig
+	SMTP               providersmtp.Config
 
 	Database DatabaseConfig
 
@@ -128,6 +133,11 @@ func loadConfig(lookup environmentLookup, hostname string) (Config, error) {
 	if err := loadCallback(&config, lookup); err != nil {
 		return Config{}, err
 	}
+	if config.Provider == SMTPProvider {
+		if err := loadSMTP(&config, lookup); err != nil {
+			return Config{}, err
+		}
+	}
 
 	if err := applyEnvironmentOverrides(&config, lookup); err != nil {
 		return Config{}, err
@@ -148,6 +158,7 @@ func DefaultConfig(databaseURL, rabbitURL, instanceID, provider string) Config {
 		ShutdownTimeout:   45 * time.Second,
 		HealthInterval:    2 * time.Second,
 		HealthTimeout:     time.Second,
+		SMTP:              providersmtp.DefaultConfig(),
 		Database: DatabaseConfig{
 			URL:             databaseURL,
 			MinConnections:  2,
@@ -199,8 +210,14 @@ func (c Config) Validate() error {
 	if !validInstanceID(c.InstanceID) {
 		return invalidConfig("MAIL_INSTANCE_ID must contain 1..200 safe bytes")
 	}
-	if c.Provider != FakeProvider {
-		return invalidConfig("MAIL_PROVIDER must be explicitly set to fake in this stage")
+	switch c.Provider {
+	case FakeProvider:
+	case SMTPProvider:
+		if err := c.SMTP.Validate(); err != nil {
+			return invalidConfig("SMTP provider configuration is invalid")
+		}
+	default:
+		return invalidConfig("MAIL_PROVIDER must be fake or smtp")
 	}
 	if err := validateListenAddress(c.GRPCListenAddress); err != nil {
 		return err
@@ -260,6 +277,55 @@ func (c Config) Validate() error {
 		c.ShutdownTimeout <= c.LifecycleConsumer.ShutdownTimeout {
 		return invalidConfig("MAIL_SHUTDOWN_TIMEOUT must exceed both consumer shutdown timeouts")
 	}
+	return nil
+}
+
+func loadSMTP(config *Config, lookup environmentLookup) error {
+	host, err := requiredEnvironment(lookup, "MAIL_SMTP_HOST")
+	if err != nil {
+		return err
+	}
+	portText, err := requiredEnvironment(lookup, "MAIL_SMTP_PORT")
+	if err != nil {
+		return err
+	}
+	port, err := strconv.ParseUint(portText, 10, 16)
+	if err != nil || port == 0 {
+		return invalidConfig("MAIL_SMTP_PORT must be an integer in range 1..65535")
+	}
+	security, err := requiredEnvironment(lookup, "MAIL_SMTP_SECURITY")
+	if err != nil {
+		return err
+	}
+	username, err := requiredEnvironment(lookup, "MAIL_SMTP_USERNAME")
+	if err != nil {
+		return err
+	}
+	authCode, err := requiredEnvironment(lookup, "MAIL_SMTP_AUTH_CODE")
+	if err != nil {
+		return err
+	}
+	fromAddress, err := requiredEnvironment(lookup, "MAIL_SMTP_FROM_ADDRESS")
+	if err != nil {
+		return err
+	}
+	smtpConfig := providersmtp.DefaultConfig()
+	smtpConfig.Host = host
+	smtpConfig.Port = uint16(port)
+	smtpConfig.Security = providersmtp.SecurityMode(security)
+	smtpConfig.AuthMethod = providersmtp.AuthMethod(environmentOr(
+		lookup,
+		"MAIL_SMTP_AUTH_METHOD",
+		string(providersmtp.AuthLogin),
+	))
+	smtpConfig.Username = username
+	smtpConfig.AuthCode = authCode
+	smtpConfig.FromAddress = fromAddress
+	smtpConfig.FromName = environmentOr(lookup, "MAIL_SMTP_FROM_NAME", "")
+	if err := overrideDuration(lookup, "MAIL_SMTP_SESSION_TIMEOUT", &smtpConfig.SessionTimeout); err != nil {
+		return err
+	}
+	config.SMTP = smtpConfig
 	return nil
 }
 
