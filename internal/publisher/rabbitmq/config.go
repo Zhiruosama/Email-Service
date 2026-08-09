@@ -6,16 +6,18 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	mqcontract "github.com/Zhiruosama/Email-Service/internal/messaging/rabbitmq"
 )
 
 const (
-	DefaultExchangeName       = "mail.events.v1"
-	DefaultDispatchQueueName  = "mail.dispatch.v1.q"
-	DefaultLifecycleQueueName = "mail.lifecycle.v1.q"
+	DefaultExchangeName       = mqcontract.ExchangeEvents
+	DefaultDispatchQueueName  = mqcontract.QueueDispatch
+	DefaultLifecycleQueueName = mqcontract.QueueLifecycle
 
-	RoutingKeyMessageAccepted   = "mail.message.accepted.v1"
-	RoutingKeyStatusChanged     = "mail.message.status.changed.v1"
-	RoutingKeyDispatchRequested = "mail.message.dispatch.requested.v1"
+	RoutingKeyMessageAccepted   = mqcontract.RoutingMessageAccepted
+	RoutingKeyStatusChanged     = mqcontract.RoutingStatusChanged
+	RoutingKeyDispatchRequested = mqcontract.RoutingDispatchRequested
 
 	maxPublisherChannels = 128
 )
@@ -56,9 +58,9 @@ func DefaultConfig(amqpURL, connectionName string) Config {
 		Heartbeat:       10 * time.Second,
 		CloseTimeout:    time.Second,
 		Routes: map[string]string{
-			"MESSAGE_ACCEPTED":           RoutingKeyMessageAccepted,
-			"MESSAGE_STATUS_CHANGED":     RoutingKeyStatusChanged,
-			"MESSAGE_DISPATCH_REQUESTED": RoutingKeyDispatchRequested,
+			mqcontract.EventMessageAccepted:   RoutingKeyMessageAccepted,
+			mqcontract.EventStatusChanged:     RoutingKeyStatusChanged,
+			mqcontract.EventDispatchRequested: RoutingKeyDispatchRequested,
 		},
 		Queues: []QueueTopology{
 			{

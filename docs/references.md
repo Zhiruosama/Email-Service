@@ -17,6 +17,14 @@
   Manual Ack、连接关闭自动重投、Delivery Tag 的 Channel 作用域和 requeue loop 风险。
 - [Consumer Prefetch](https://www.rabbitmq.com/docs/consumer-prefetch)：Prefetch 对每个
   Consumer 未确认窗口、吞吐和内存背压的影响。
+- [Consumers](https://www.rabbitmq.com/docs/consumers)：Consumer 生命周期、Manual Ack、
+  Consumer timeout 和取消行为。
+- [Dead Letter Exchanges](https://www.rabbitmq.com/docs/dlx)：Reject/Nack 触发死信、
+  routing key 和优先使用 Policy 管理 DLX。
+- [RabbitMQ 4.3 Quorum Queues](https://www.rabbitmq.com/docs/4.3/quorum-queues)：
+  `delivery-count`、Delayed Retry、Delivery Limit 和 at-least-once dead lettering。
+- [RabbitMQ 4.3 Release Highlights](https://www.rabbitmq.com/blog/2026/04/23/rabbitmq-4.3-release)：
+  `basic.reject` 与 `basic.nack` 对 delivery count 的不同影响。
 - [amqp091-go API](https://pkg.go.dev/github.com/rabbitmq/amqp091-go)：官方维护的 AMQP
   0.9.1 Go 客户端、Confirm、Return 和 Channel API；当前实现固定为 `v1.13.0`。
 - [Queues](https://www.rabbitmq.com/docs/queues)：Queue 声明属性一致性与优先使用 Policy

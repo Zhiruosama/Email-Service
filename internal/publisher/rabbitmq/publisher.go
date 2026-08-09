@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Zhiruosama/Email-Service/internal/application/ports"
+	mqcontract "github.com/Zhiruosama/Email-Service/internal/messaging/rabbitmq"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -335,13 +336,13 @@ func (p *Publisher) makePublishing(publication ports.OutboxPublication) amqp.Pub
 	event := publication.Event
 	return amqp.Publishing{
 		Headers: amqp.Table{
-			"x-mail-aggregate-type":      event.AggregateType,
-			"x-mail-aggregate-id":        event.AggregateID,
-			"x-mail-aggregate-sequence":  int64(event.AggregateSequence),
-			"x-mail-dispatch-generation": int64(event.DispatchGeneration),
-			"x-mail-publish-attempt":     int64(publication.AttemptNumber),
+			mqcontract.HeaderAggregateType:      event.AggregateType,
+			mqcontract.HeaderAggregateID:        event.AggregateID,
+			mqcontract.HeaderAggregateSequence:  int64(event.AggregateSequence),
+			mqcontract.HeaderDispatchGeneration: int64(event.DispatchGeneration),
+			mqcontract.HeaderPublishAttempt:     int64(publication.AttemptNumber),
 		},
-		ContentType:   "application/json",
+		ContentType:   mqcontract.ContentTypeJSON,
 		DeliveryMode:  amqp.Persistent,
 		MessageId:     event.ID,
 		CorrelationId: event.AggregateID,

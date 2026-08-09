@@ -252,6 +252,19 @@ Publisher 使用一条长连接和有界 Channel 池，一次并发 Publish 独�
 为下一条消息的结果；这一动作可能让同连接上的其他在途 Publish 失败，但它们都会由
 Outbox 按 At Least Once 恢复。
 
+Consumer 使用一条长连接和多条独立 Channel lane。每条 lane 只有一个 Consumer，设置
+per-consumer prefetch 并顺序调用 Worker；不同 lane 并行。Delivery tag 只在所属 Channel
+内确认。合法消息在 Worker 返回稳定结果后 `Ack(false)`；确定毒消息
+`Nack(false, false)` 立即死信；瞬时基础设施错误用 `Reject(true)`，使 RabbitMQ 4.3
+Quorum Queue 增加 `delivery-count` 并执行线性 delayed retry。连接关闭时仍未确认的消息由
+Broker 重投。
+
+`mail.dispatch.v1.q` 的运行 Policy 配置 `delivery-limit=20`、
+`delayed-retry-type=failed`、1s..30s 延迟，以及指向 `mail.dead.v1` 的 at-least-once
+dead lettering。该模式要求 `overflow=reject-publish`。DLQ 为 durable quorum queue，绑定
+`mail.dispatch.dead.v1`。Policy 由 `make mq-policy-apply` 幂等应用，不能与代码 binding 的
+routing key 漂移。
+
 目标按类别隔离时拓扑扩展为：
 
 推荐使用 RabbitMQ Quorum Queues：

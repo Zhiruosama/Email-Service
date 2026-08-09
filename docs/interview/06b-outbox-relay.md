@@ -485,8 +485,10 @@ Claim 后、Publish 前可能崩溃，此时没有发生网络尝试的证据。
 - Relay role 的循环、空批次退避、优雅停机和 readiness；
 - Outbox lag、LeaseLost、Publish latency 和 DLQ 告警；
 - DEAD_LETTERED 查询、人工重放和权限审计；
-- Worker 对 event identity、sequence 和 dispatch generation 的幂等消费。
+- Worker 对 event identity、sequence 和 dispatch generation 的幂等消费已在
+  [07-A Worker 核心](07a-dispatch-worker-core.md) 与
+  [07-B RabbitMQ Consumer](07b-rabbitmq-consumer.md) 完成。
 
 本阶段的直接后继 06-C 保持了 Publisher 端口和事务语义，只增加真实 transport confirm、
-mandatory return、持久消息和路由键映射。当前下一阶段是 RabbitMQ Worker 与 Fake
-Provider。
+mandatory return、持久消息和路由键映射；之后 07-A/07-B 已继续完成 Worker、Fake
+Provider 与 RabbitMQ Consumer。

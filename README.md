@@ -13,8 +13,9 @@ AI-Nexus 是第一个接入方，但不是 Mail Service 的架构边界。
 项目已完成架构基线、通用 gRPC V1 契约、领域状态机、PostgreSQL 18 Migration、
 Repository 与 version 乐观锁、Message + Transactional Outbox 原子持久化、数据库
 Scheduler、Outbox Relay 的 Lease/Fencing，以及带 mandatory、Publisher Confirm、Quorum
-Queue 和按需重连的 RabbitMQ Publisher Adapter。下一阶段为 RabbitMQ Worker 与 Fake
-Provider。
+Queue 和按需重连的 RabbitMQ Publisher Adapter；Dispatch Worker、Delivery Attempt、
+Fake Provider，以及带 Manual ACK、prefetch、延迟重试、DLQ、重连和优雅停机的 RabbitMQ
+Consumer Adapter 也已完成。下一阶段为进程级依赖装配与运行时健康状态。
 
 ## 设计文档
 
@@ -88,6 +89,9 @@ make infra-down
 RabbitMQ Management UI 默认为 `http://localhost:15672`，本地账号为
 `email_service / email_service_dev`。
 
+`make mq-up` 和 `make infra-up` 会自动应用 dispatch queue 的 delayed retry、delivery limit
+和 at-least-once dead-letter Policy；可用 `make mq-policy-status` 查看实际策略。
+
 Migration 文件校验和真实 PostgreSQL + RabbitMQ 集成测试：
 
 ```bash
@@ -96,5 +100,5 @@ make test-integration
 ```
 
 普通 `go test ./...` 不依赖 Docker；只有 integration build tag 会启动一次性 PostgreSQL
-或 RabbitMQ 容器。RabbitMQ Publisher 集成测试还会验证 Broker 应用重启后的消息持久化
-与客户端重连。
+或 RabbitMQ 容器。RabbitMQ 集成测试会验证 Publisher Confirm、消息持久化、Consumer
+Manual ACK、延迟重试、DLQ，以及 Broker 应用重启后的客户端重连。

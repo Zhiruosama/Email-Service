@@ -370,15 +370,14 @@ MQ requeue 只处理短暂基础设施失败。
 4xx/5xx 分类、DATA 后断线、TLS 和认证。分层以后，SMTP 只负责把具体协议结果规范化，
 不会重新实现 Worker 事务。
 
-## 14. 尚未解决
+## 14. 后续进展与尚未解决
 
-- RabbitMQ Consumer 连接、Manual ACK/Nack、prefetch、优雅停机和重连；
-- poison message 的 Dead Letter Exchange、delivery limit 和安全重放；
+- RabbitMQ Consumer、Manual ACK、prefetch、优雅停机、重连、DLX 和 delivery limit 已在
+  [07-B RabbitMQ Consumer](07b-rabbitmq-consumer.md) 完成；安全重放工具仍未实现；
 - 扫描陈旧 `STARTED` Attempt 的 Reconciler；
 - Provider Router、凭据版本、路由版本和 Provider 幂等 Key；
 - 收件人密文、模板版本、MIME 渲染和真实 SMTP；
 - 熔断、限速、舱壁、指标和 Trace。
 
-下一阶段 07-B 会把 RabbitMQ Delivery 转换为当前 `DispatchCommand`，只在
-`DispatchWorker.Process` 给出可安全确认的结果后 Manual ACK，并通过 prefetch 和本地并发
-上限控制在途邮件数量。
+下一阶段 07-C 会通过 Composition Root 把 PostgreSQL、Scheduler、Outbox Relay、Publisher、
+Consumer、Worker 和 Fake Provider 装配成一个可运行进程，并补齐统一启停与健康状态。

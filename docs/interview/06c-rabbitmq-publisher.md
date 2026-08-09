@@ -525,16 +525,17 @@ Outbox 才是受理真相。Broker 故障由 Relay 积压、readiness、lag 和�
 不会。Message ID 是消费者幂等键，不是 RabbitMQ 去重开关。真实测试明确看到两条相同
 Event ID 的消息，Worker 必须查数据库状态/generation 后幂等处理。
 
-## 18. 尚未解决
+## 18. 后续进展与尚未解决
 
-- RabbitMQ Consumer、manual ACK、prefetch 和优雅停机；
-- Worker 对 Event ID、sequence、dispatch generation 的幂等；
-- Fake Provider 与 Message Attempt 事务；
+- Worker、Fake Provider、Message Attempt 事务已在
+  [07-A Worker 核心](07a-dispatch-worker-core.md) 完成；
+- RabbitMQ Consumer、Manual ACK、prefetch、优雅停机和 DLQ Policy 已在
+  [07-B RabbitMQ Consumer](07b-rabbitmq-consumer.md) 完成；
 - Critical / Bulk 物理 Queue 舱壁和稳定 category 路由元数据；
 - delivery limit、dead-letter policy、DLQ 查询与安全重放；
 - Publisher/Connection/Confirm latency、Return、Nack、Outbox lag 指标；
 - TLS、独立 vhost、最小权限用户和凭据轮换；
 - 三节点 Quorum Queue 的多数派故障与滚动升级演练。
 
-下一阶段是 07：RabbitMQ Worker + Fake Provider。重点从“Broker 是否接管”转为“Worker
-何时 ACK、怎样防止旧 generation 或重复 Event 触发第二次逻辑发送”。
+07-A/07-B 已回答“Worker 何时 ACK、怎样防止旧 generation 或重复 Event 触发第二次逻辑
+发送”。当前下一阶段是 07-C：把这些组件装配成可运行进程并暴露健康状态。

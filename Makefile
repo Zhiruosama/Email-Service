@@ -13,7 +13,7 @@ PROTO_FILES := $(shell find $(PROTO_DIR) -type f -name '*.proto' | sort)
 PROTOC_GEN_GO := $(shell $(GO) tool -n protoc-gen-go)
 PROTOC_GEN_GO_GRPC := $(shell $(GO) tool -n protoc-gen-go-grpc)
 
-.PHONY: help generate buf-generate proto-check proto-format-check proto-lint format test test-integration check check-all infra-up infra-down infra-status db-up db-down db-status mq-up mq-down mq-status migrate-up migrate-down migrate-status migrate-validate
+.PHONY: help generate buf-generate proto-check proto-format-check proto-lint format test test-integration check check-all infra-up infra-down infra-status db-up db-down db-status mq-up mq-down mq-status mq-policy-apply mq-policy-status migrate-up migrate-down migrate-status migrate-validate
 
 help:
 	@echo "generate     Generate Go protobuf and gRPC bindings"
@@ -35,6 +35,8 @@ help:
 	@echo "mq-up        Start the local RabbitMQ container and wait until healthy"
 	@echo "mq-down      Stop RabbitMQ without deleting its data volume"
 	@echo "mq-status    Show RabbitMQ status"
+	@echo "mq-policy-apply Apply the dispatch retry and dead-letter policy"
+	@echo "mq-policy-status Show RabbitMQ policies"
 	@echo "migrate-up   Apply all PostgreSQL migrations"
 	@echo "migrate-down Roll back one PostgreSQL migration"
 	@echo "migrate-status Show PostgreSQL migration status"
@@ -87,6 +89,7 @@ infra-up:
 		MAIL_RABBITMQ_PORT=$${MAIL_RABBITMQ_PORT:-5672} \
 		MAIL_RABBITMQ_MANAGEMENT_PORT=$${MAIL_RABBITMQ_MANAGEMENT_PORT:-15672} \
 		docker compose up -d --wait postgres rabbitmq
+	$(MAKE) mq-policy-apply
 
 infra-down:
 	docker compose down
@@ -108,12 +111,25 @@ mq-up:
 		MAIL_RABBITMQ_PORT=$${MAIL_RABBITMQ_PORT:-5672} \
 		MAIL_RABBITMQ_MANAGEMENT_PORT=$${MAIL_RABBITMQ_MANAGEMENT_PORT:-15672} \
 		docker compose up -d --wait rabbitmq
+	$(MAKE) mq-policy-apply
 
 mq-down:
 	docker compose stop rabbitmq
 
 mq-status:
 	docker compose ps rabbitmq
+
+mq-policy-apply:
+	docker compose exec -T rabbitmq rabbitmqctl set_policy \
+		--vhost / \
+		mail-dispatch-reliability \
+		'^mail[.]dispatch[.]v1[.]q$$' \
+		'{"dead-letter-exchange":"mail.dead.v1","dead-letter-routing-key":"mail.dispatch.dead.v1","dead-letter-strategy":"at-least-once","overflow":"reject-publish","delivery-limit":20,"delayed-retry-type":"failed","delayed-retry-min":1000,"delayed-retry-max":30000}' \
+		--priority 100 \
+		--apply-to quorum_queues
+
+mq-policy-status:
+	docker compose exec -T rabbitmq rabbitmqctl list_policies --vhost /
 
 migrate-up:
 	$(GOOSE) -dir db/migrations/sql postgres "$(DATABASE_URL)" up
