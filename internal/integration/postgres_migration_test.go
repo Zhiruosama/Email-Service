@@ -70,8 +70,8 @@ func TestDeliveryCoreMigration(t *testing.T) {
 		`).Scan(&version); err != nil {
 			t.Fatalf("query migration version: %v", err)
 		}
-		if version != 1 {
-			t.Fatalf("migration version = %d, want 1", version)
+		if version != 2 {
+			t.Fatalf("migration version = %d, want 2", version)
 		}
 	})
 
@@ -257,6 +257,73 @@ func TestDeliveryCoreMigration(t *testing.T) {
 		assertPostgresError(t, err, "23514", "outbox_events_payload_object")
 	})
 
+	t.Run("enforces one attempt per number and generation", func(t *testing.T) {
+		const insertAttempt = `
+			INSERT INTO delivery_attempts (
+				id,
+				message_id,
+				attempt_no,
+				dispatch_generation,
+				provider_key,
+				status,
+				started_at
+			) VALUES ($1, $2, $3, $4, 'fake', 'STARTED', $5)
+		`
+		startedAt := acceptedAt.Add(2 * time.Minute)
+		if _, err := db.ExecContext(
+			ctx,
+			insertAttempt,
+			"40000000-0000-4000-8000-000000000001",
+			messageOne,
+			1,
+			1,
+			startedAt,
+		); err != nil {
+			t.Fatalf("insert valid delivery attempt: %v", err)
+		}
+
+		_, err := db.ExecContext(
+			ctx,
+			insertAttempt,
+			"40000000-0000-4000-8000-000000000002",
+			messageOne,
+			1,
+			2,
+			startedAt,
+		)
+		assertPostgresError(t, err, "23505", "delivery_attempts_message_attempt_unique")
+
+		_, err = db.ExecContext(
+			ctx,
+			insertAttempt,
+			"40000000-0000-4000-8000-000000000003",
+			messageOne,
+			2,
+			1,
+			startedAt,
+		)
+		assertPostgresError(t, err, "23505", "delivery_attempts_message_generation_unique")
+	})
+
+	t.Run("requires a consistent delivery attempt result", func(t *testing.T) {
+		_, err := db.ExecContext(ctx, `
+			INSERT INTO delivery_attempts (
+				id,
+				message_id,
+				attempt_no,
+				dispatch_generation,
+				provider_key,
+				status,
+				started_at
+			) VALUES ($1, $2, 3, 3, 'fake', 'PROVIDER_ACCEPTED', $3)
+		`,
+			"40000000-0000-4000-8000-000000000004",
+			messageOne,
+			acceptedAt.Add(2*time.Minute),
+		)
+		assertPostgresError(t, err, "23514", "delivery_attempts_result_consistent")
+	})
+
 	t.Run("requires paired outbox lease fields", func(t *testing.T) {
 		_, err := db.ExecContext(ctx, `
 			INSERT INTO outbox_events (
@@ -297,11 +364,13 @@ func TestDeliveryCoreMigration(t *testing.T) {
 
 	t.Run("creates scheduler and relay indexes", func(t *testing.T) {
 		want := map[string]bool{
-			"mail_messages_scheduled_due_idx":     false,
-			"mail_messages_retry_due_idx":         false,
-			"mail_messages_tenant_accepted_idx":   false,
-			"outbox_events_pending_available_idx": false,
-			"outbox_events_pending_lease_idx":     false,
+			"delivery_attempts_message_started_idx":    false,
+			"delivery_attempts_unfinished_started_idx": false,
+			"mail_messages_scheduled_due_idx":          false,
+			"mail_messages_retry_due_idx":              false,
+			"mail_messages_tenant_accepted_idx":        false,
+			"outbox_events_pending_available_idx":      false,
+			"outbox_events_pending_lease_idx":          false,
 		}
 		rows, err := db.QueryContext(ctx, `
 			SELECT indexname
@@ -331,12 +400,13 @@ func TestDeliveryCoreMigration(t *testing.T) {
 		}
 	})
 
-	if err := goose.DownContext(ctx, db, "sql"); err != nil {
+	if err := goose.DownToContext(ctx, db, "sql", 0); err != nil {
 		t.Fatalf("roll back migration: %v", err)
 	}
 	assertTableMissing(t, ctx, db, "tenants")
 	assertTableMissing(t, ctx, db, "mail_messages")
 	assertTableMissing(t, ctx, db, "outbox_events")
+	assertTableMissing(t, ctx, db, "delivery_attempts")
 
 	if err := goose.UpContext(ctx, db, "sql"); err != nil {
 		t.Fatalf("reapply migration after rollback: %v", err)
@@ -344,6 +414,7 @@ func TestDeliveryCoreMigration(t *testing.T) {
 	assertTablePresent(t, ctx, db, "tenants")
 	assertTablePresent(t, ctx, db, "mail_messages")
 	assertTablePresent(t, ctx, db, "outbox_events")
+	assertTablePresent(t, ctx, db, "delivery_attempts")
 }
 
 func insertTenant(t *testing.T, ctx context.Context, db *sql.DB, id, key string) {

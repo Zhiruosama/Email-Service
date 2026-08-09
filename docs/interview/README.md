@@ -22,7 +22,8 @@ Mail Service 从零到可上线的每一个开发阶段。
 | 06-A | 数据库 Scheduler | 已完成 | [数据库 Scheduler](06a-database-scheduler.md) |
 | 06-B | Outbox Relay 与 Lease Fencing | 已完成 | [Outbox Relay](06b-outbox-relay.md) |
 | 06-C | RabbitMQ Publisher Adapter | 已完成 | [RabbitMQ Publisher](06c-rabbitmq-publisher.md) |
-| 07 | RabbitMQ Worker 与 Fake Provider | 未开始 | 完成后新增 |
+| 07-A | Worker 核心、Delivery Attempt 与 Fake Provider | 已完成 | [Worker 核心](07a-dispatch-worker-core.md) |
+| 07-B | RabbitMQ Consumer、Manual ACK 与 DLQ | 未开始 | 完成后新增 |
 | 08 | 状态通知与 AI-Nexus 联调 | 未开始 | 完成后新增 |
 | 09 | SMTP Provider、重试与熔断 | 未开始 | 完成后新增 |
 | 10 | 多租户、模板和生产化 | 未开始 | 完成后新增 |
@@ -39,7 +40,8 @@ Mail Service 从零到可上线的每一个开发阶段。
 8. [数据库 Scheduler](06a-database-scheduler.md)
 9. [Outbox Relay 与 Lease Fencing](06b-outbox-relay.md)
 10. [RabbitMQ Publisher Adapter](06c-rabbitmq-publisher.md)
-11. [核心术语速查](glossary.md)
+11. [Worker 核心、Delivery Attempt 与 Fake Provider](07a-dispatch-worker-core.md)
+12. [核心术语速查](glossary.md)
 
 ## 每阶段固定记录结构
 

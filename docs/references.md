@@ -13,6 +13,10 @@
   `mandatory` 不可路由处理，以及共享 Channel 并发发布的风险。
 - [Publisher Confirms Go Tutorial](https://www.rabbitmq.com/tutorials/tutorial-seven-go)：
   Go 客户端的 Confirm correlation 和 Deferred Confirmation。
+- [Consumer Acknowledgements and Publisher Confirms](https://www.rabbitmq.com/docs/confirms)：
+  Manual Ack、连接关闭自动重投、Delivery Tag 的 Channel 作用域和 requeue loop 风险。
+- [Consumer Prefetch](https://www.rabbitmq.com/docs/consumer-prefetch)：Prefetch 对每个
+  Consumer 未确认窗口、吞吐和内存背压的影响。
 - [amqp091-go API](https://pkg.go.dev/github.com/rabbitmq/amqp091-go)：官方维护的 AMQP
   0.9.1 Go 客户端、Confirm、Return 和 Channel API；当前实现固定为 `v1.13.0`。
 - [Queues](https://www.rabbitmq.com/docs/queues)：Queue 声明属性一致性与优先使用 Policy

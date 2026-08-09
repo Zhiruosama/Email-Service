@@ -8,7 +8,8 @@
 ## Attempt
 
 一次具体的 Provider 投递尝试。一封 Message 可以有多个 Attempt，但成功消费旧 MQ
-消息不能凭空创建新 Attempt。
+消息不能凭空创建新 Attempt。Worker 在 Provider I/O 前原子创建 `STARTED` Attempt；最终
+只归一化为明确接受、明确失败或提交结果未知，供状态机和 Reconciler 使用。
 
 ## Outbox
 
@@ -88,8 +89,10 @@ RabbitMQ 基于 Raft 的复制队列类型，面向数据安全和高可用。�
 
 ## Consumer Ack
 
-Worker 完成持久化处理后向 RabbitMQ 确认消息可以删除。应在数据库事务提交后 ACK，
-否则 Worker 崩溃可能导致消息已经删除但状态尚未保存。
+Worker 正常完成结果事务后向 RabbitMQ 确认消息可以删除。旧 generation、重复事件也可以
+在数据库证明其不能再次执行后 ACK；若数据库已有 `SENDING + STARTED` 而结果未完成，
+由 Reconciler 对账，不能靠 MQ 重投盲目再次调用 Provider。任何 ACK 都必须建立在已提交
+的数据库事实之上。
 
 ## At Least Once
 

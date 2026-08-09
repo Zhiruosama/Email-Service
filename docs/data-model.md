@@ -172,25 +172,33 @@ Provider 配置需要先完成加密与控制面模型，将通过后续 Migrati
 
 ### 3.5 `delivery_attempts`
 
+07-A 已落地的第一版字段为：
+
 ```text
 id uuid primary key
 message_id uuid
 attempt_no int
-provider_id uuid
-credential_version_id uuid
-route_version_id uuid
+dispatch_generation bigint
+provider_key varchar
 status varchar
 started_at timestamptz
 finished_at timestamptz nullable
 provider_message_id varchar nullable
 error_category varchar nullable
 error_code varchar nullable
-error_summary varchar nullable
-result_metadata jsonb
 unique (message_id, attempt_no)
+unique (message_id, dispatch_generation)
 ```
 
-`result_metadata` 必须经过字段白名单过滤，不保存 Provider 原始响应、完整地址或正文。
+第一版 `status` 只允许 `STARTED`、`PROVIDER_ACCEPTED`、`FAILED` 和
+`SUBMISSION_UNKNOWN`，并用数据库 CHECK 保证完成时间、Provider Message ID 和错误字段与
+状态一致。`STARTED` 在 Message 进入 `SENDING` 的同一事务创建，使 Worker 崩溃留下可扫描
+的对账证据。
+
+当前使用稳定 `provider_key` 是为了先跑通 Fake Provider 纵向切片。Provider 控制面完成后
+会增加不可变的 `provider_id`、`credential_version_id` 和 `route_version_id`；经过字段
+白名单过滤的 `result_metadata` 也只能保存必要元数据，不保存 Provider 原始响应、完整
+地址或正文。
 
 ### 3.6 `delivery_events`
 

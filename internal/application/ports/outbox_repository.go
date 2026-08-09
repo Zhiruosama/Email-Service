@@ -69,7 +69,9 @@ type OutboxRepository interface {
 // UnitOfWork exposes repositories bound to one infrastructure transaction.
 // Application code can coordinate atomic writes without importing pgx.
 type UnitOfWork interface {
+	Clock() TransactionClock
 	Messages() MessageRepository
+	DeliveryAttempts() DeliveryAttemptRepository
 	Outbox() OutboxRepository
 	DueMessages() DueMessageRepository
 	OutboxDeliveries() OutboxDeliveryRepository

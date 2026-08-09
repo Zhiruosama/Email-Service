@@ -47,6 +47,13 @@ type Failure struct {
 	Retryable bool
 }
 
+// Validate exposes failure validation at application boundaries. The domain
+// transitions call the same rules internally, so provider adapters and
+// persistence ports cannot construct a failure the aggregate would reject.
+func (f Failure) Validate() error {
+	return f.validate()
+}
+
 func (f Failure) validate() error {
 	if !f.Category.Valid() {
 		return fmt.Errorf("%w: invalid failure category %q", ErrInvalidMessage, f.Category)

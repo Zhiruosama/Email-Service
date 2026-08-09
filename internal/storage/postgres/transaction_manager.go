@@ -57,7 +57,9 @@ func (m *TransactionManager) WithinTransaction(
 	}()
 
 	unit := &postgresUnitOfWork{
+		clock:            NewTransactionClock(tx),
 		messages:         NewMessageRepository(tx),
+		deliveryAttempts: NewDeliveryAttemptRepository(tx),
 		outbox:           NewOutboxRepository(tx),
 		dueMessages:      NewDueMessageRepository(tx),
 		outboxDeliveries: NewOutboxDeliveryRepository(tx),
@@ -82,13 +84,21 @@ func rollbackTransaction(tx pgx.Tx) error {
 }
 
 type postgresUnitOfWork struct {
+	clock            ports.TransactionClock
 	messages         ports.MessageRepository
+	deliveryAttempts ports.DeliveryAttemptRepository
 	outbox           ports.OutboxRepository
 	dueMessages      ports.DueMessageRepository
 	outboxDeliveries ports.OutboxDeliveryRepository
 }
 
+func (u *postgresUnitOfWork) Clock() ports.TransactionClock { return u.clock }
+
 func (u *postgresUnitOfWork) Messages() ports.MessageRepository { return u.messages }
+
+func (u *postgresUnitOfWork) DeliveryAttempts() ports.DeliveryAttemptRepository {
+	return u.deliveryAttempts
+}
 
 func (u *postgresUnitOfWork) Outbox() ports.OutboxRepository { return u.outbox }
 

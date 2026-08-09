@@ -12,7 +12,7 @@
 业务系统 ── gRPC ──► Submission API ── PostgreSQL
                          │                 │
                          │                 ├── mail_messages
-                         │                 ├── mail_attempts
+                         │                 ├── delivery_attempts
                          │                 ├── outbox_events
                          │                 └── delivery_events
                          │                         │
@@ -121,11 +121,19 @@ Adapter 构造时只校验配置，不要求 RabbitMQ 在线。第一次 Publish
 - 手动 ACK RabbitMQ 消息；
 - 根据数据库状态和 `dispatch_generation` 幂等领取任务；
 - 检查取消、截止时间和租户状态；
+- 在第一段短事务中原子执行 `QUEUED → SENDING`、创建 `STARTED` Attempt 和写 Outbox；
+- 使用 PostgreSQL `transaction_timestamp()` 判断 deadline 和记录业务发生时间，避免不同
+  Worker 节点的墙上时钟偏差改变状态机决定；
+- 第一段事务提交后再调用 Provider，网络 I/O 期间不持有数据库事务或行锁；
 - 固定模板版本并渲染 MIME 邮件；
 - 通过 Provider Router 选择供应商；
 - 执行超时、舱壁、限速和熔断策略；
-- 原子记录 Attempt、消息状态和通知 Outbox；
-- 数据库提交后才 ACK。
+- 在第二段短事务中原子完成 Attempt、推进消息状态并写 Outbox；
+- 第二段数据库事务提交后才 ACK；重复或旧 generation 不再次调用 Provider。
+
+07-A 已完成上述 Worker 应用内核和 Fake Provider，但尚未接 RabbitMQ Consumer。当前
+Provider Request 只含 Message、Tenant、Attempt 和策略元数据；模板、收件人密文、MIME
+渲染与 Provider Router 会在相应数据模型完成后接入，不能用明文占位绕过安全设计。
 
 ### 3.5 Provider Router
 
@@ -160,7 +168,7 @@ Adapter 构造时只校验配置，不要求 RabbitMQ 在线。第一次 Publish
 
 ### 3.8 Reconciler
 
-- 查找长时间停留在 `SENDING`、`SUBMITTED_UNKNOWN` 等状态的任务；
+- 查找长时间停留在 `SENDING`、`SUBMISSION_UNKNOWN` 等状态的任务；
 - 对支持查询的 Provider 主动确认；
 - 对不支持查询的 SMTP 任务应用配置化的不确定结果策略；
 - 修复 Outbox、回调和状态之间可安全推导的不一致；

@@ -111,14 +111,21 @@ Worker：
 
 1. 收到消息；
 2. 校验消息携带的 `dispatch_generation` 与数据库当前代次；
-3. 在数据库中领取对应任务；
-4. 执行一次有界投递尝试；
-5. 事务保存 Attempt、聚合状态和 Notification Outbox；
-6. 提交事务；
+3. 第一段短事务执行 `QUEUED → SENDING`，同时创建 `STARTED` Attempt 和状态 Outbox；
+4. 提交第一段事务，再在事务外执行一次有界 Provider 调用；
+5. 第二段短事务完成 Attempt、推进聚合状态并写状态 Outbox；
+6. 提交第二段事务；
 7. ACK RabbitMQ。
 
 状态不匹配或代次过旧的消息直接作为陈旧消息确认，不触发投递。步骤 5 后、步骤 7
-前崩溃会产生重复消费，但不会创建新的逻辑 Attempt。
+前崩溃会产生重复消费，但不会创建新的逻辑 Attempt。步骤 3 后、步骤 4 前崩溃会保留
+`SENDING + STARTED`，后续 Reconciler 据此判断“Provider 可能尚未调用，也可能结果未能
+持久化”；在不能证明未提交时，不允许重复发送 `AVOID_DUPLICATE` 邮件。
+
+`delivery_attempts` 同时唯一约束 `(message_id, attempt_no)` 和
+`(message_id, dispatch_generation)`。应用层的 Message 乐观锁解决并发状态推进，Attempt
+唯一约束是数据库最后防线。Provider 返回值显式区分 `ACCEPTED`、已知 `FAILED` 和
+`SUBMISSION_UNKNOWN`；网络异常不能不加判断地折叠为一个普通 `error`。
 
 ## 4. 延迟发送
 
