@@ -19,6 +19,7 @@ const (
 	bulkheadFullCode = "LOCAL_PROVIDER_BULKHEAD_FULL"
 	rateLimitedCode  = "LOCAL_PROVIDER_RATE_LIMITED"
 	contextDoneCode  = "LOCAL_PROVIDER_CONTEXT_DONE"
+	circuitOpenCode  = "LOCAL_PROVIDER_CIRCUIT_OPEN"
 
 	maxConcurrencyLimit = 10_000
 	minRatePerSecond    = 0.001
@@ -34,6 +35,7 @@ type Config struct {
 	MaxConcurrent uint32
 	RatePerSecond float64
 	Burst         uint32
+	Circuit       CircuitConfig
 }
 
 func DefaultConfig() Config {
@@ -41,6 +43,7 @@ func DefaultConfig() Config {
 		MaxConcurrent: 2,
 		RatePerSecond: 1,
 		Burst:         2,
+		Circuit:       DefaultCircuitConfig(),
 	}
 }
 
@@ -55,6 +58,9 @@ func (c Config) Validate() error {
 	if c.Burst == 0 || c.Burst > maxBurstLimit {
 		return invalidConfig("burst must be in range 1..100000")
 	}
+	if err := c.Circuit.Validate(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -66,6 +72,7 @@ type Guard struct {
 	rate     float64
 	burst    float64
 	now      func() time.Time
+	breaker  *circuitBreaker
 
 	mu     sync.Mutex
 	tokens float64
@@ -93,18 +100,26 @@ func newWithClock(
 		return nil, err
 	}
 	burst := float64(config.Burst)
+	breaker, err := newCircuitBreaker(config.Circuit)
+	if err != nil {
+		return nil, err
+	}
 	return &Guard{
 		provider: provider,
 		slots:    make(chan struct{}, config.MaxConcurrent),
 		rate:     config.RatePerSecond,
 		burst:    burst,
 		now:      now,
+		breaker:  breaker,
 		tokens:   burst,
 		last:     now(),
 	}, nil
 }
 
 func (g *Guard) Key() string { return g.provider.Key() }
+
+// CircuitState exposes safe state for future metrics and health diagnostics.
+func (g *Guard) CircuitState() CircuitState { return g.breaker.currentState() }
 
 func (g *Guard) Submit(
 	ctx context.Context,
@@ -113,22 +128,31 @@ func (g *Guard) Submit(
 	if ctx.Err() != nil {
 		return contextDoneResult()
 	}
+	ticket, admitted := g.breaker.acquire(g.now())
+	if !admitted {
+		return circuitOpenResult()
+	}
 
 	select {
 	case g.slots <- struct{}{}:
 		defer func() { <-g.slots }()
 	default:
+		g.breaker.cancel(ticket)
 		return retryableRateLimitResult(bulkheadFullCode)
 	}
 
 	// Cancellation after acquiring a slot must not consume rate capacity.
 	if ctx.Err() != nil {
+		g.breaker.cancel(ticket)
 		return contextDoneResult()
 	}
 	if !g.allow(g.now()) {
+		g.breaker.cancel(ticket)
 		return retryableRateLimitResult(rateLimitedCode)
 	}
-	return g.provider.Submit(ctx, request)
+	result := g.provider.Submit(ctx, request)
+	g.breaker.record(ticket, result, g.now())
+	return result
 }
 
 func (g *Guard) allow(now time.Time) bool {
@@ -165,6 +189,18 @@ func contextDoneResult() ports.ProviderResult {
 	failure := message.Failure{
 		Category:  message.FailureTimeoutBeforeSend,
 		Code:      contextDoneCode,
+		Retryable: true,
+	}
+	return ports.ProviderResult{
+		Outcome: ports.ProviderOutcomeFailed,
+		Failure: &failure,
+	}
+}
+
+func circuitOpenResult() ports.ProviderResult {
+	failure := message.Failure{
+		Category:  message.FailureProviderDown,
+		Code:      circuitOpenCode,
 		Retryable: true,
 	}
 	return ports.ProviderResult{

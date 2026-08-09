@@ -58,7 +58,7 @@ func TestGuardPreservesProviderIdentityAndAcceptedResult(t *testing.T) {
 func TestGuardBulkheadRejectsWithoutWaiting(t *testing.T) {
 	t.Parallel()
 	provider := newBlockingProvider()
-	guard, err := New(provider, Config{MaxConcurrent: 2, RatePerSecond: 100, Burst: 100})
+	guard, err := New(provider, guardConfig(2, 100, 100))
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -88,11 +88,7 @@ func TestGuardTokenBucketRefillsWithTime(t *testing.T) {
 	t.Parallel()
 	clock := newFakeClock(time.Unix(1_700_000_000, 0))
 	provider := &providerStub{result: acceptedResult("accepted")}
-	guard, err := newWithClock(provider, Config{
-		MaxConcurrent: 1,
-		RatePerSecond: 2,
-		Burst:         2,
-	}, clock.Now)
+	guard, err := newWithClock(provider, guardConfig(1, 2, 2), clock.Now)
 	if err != nil {
 		t.Fatalf("newWithClock() error = %v", err)
 	}
@@ -119,7 +115,7 @@ func TestGuardTokenBucketRefillsWithTime(t *testing.T) {
 func TestGuardTokenBucketIsSafeUnderConcurrency(t *testing.T) {
 	t.Parallel()
 	provider := &providerStub{result: acceptedResult("accepted")}
-	guard, err := New(provider, Config{MaxConcurrent: 100, RatePerSecond: 0.001, Burst: 10})
+	guard, err := New(provider, guardConfig(100, 0.001, 10))
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -156,7 +152,7 @@ func TestGuardTokenBucketIsSafeUnderConcurrency(t *testing.T) {
 func TestGuardBulkheadRejectionDoesNotConsumeToken(t *testing.T) {
 	t.Parallel()
 	provider := newBlockingProvider()
-	guard, err := New(provider, Config{MaxConcurrent: 1, RatePerSecond: 0.001, Burst: 2})
+	guard, err := New(provider, guardConfig(1, 0.001, 2))
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -183,7 +179,7 @@ func TestGuardBulkheadRejectionDoesNotConsumeToken(t *testing.T) {
 func TestGuardCanceledContextDoesNotCallProviderOrConsumeToken(t *testing.T) {
 	t.Parallel()
 	provider := &providerStub{result: acceptedResult("accepted")}
-	guard, err := New(provider, Config{MaxConcurrent: 1, RatePerSecond: 0.001, Burst: 1})
+	guard, err := New(provider, guardConfig(1, 0.001, 1))
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -271,6 +267,15 @@ func acceptedResult(id string) ports.ProviderResult {
 	return ports.ProviderResult{
 		Outcome:           ports.ProviderOutcomeAccepted,
 		ProviderMessageID: id,
+	}
+}
+
+func guardConfig(maxConcurrent uint32, ratePerSecond float64, burst uint32) Config {
+	return Config{
+		MaxConcurrent: maxConcurrent,
+		RatePerSecond: ratePerSecond,
+		Burst:         burst,
+		Circuit:       DefaultCircuitConfig(),
 	}
 }
 

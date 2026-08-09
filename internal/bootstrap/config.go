@@ -480,6 +480,7 @@ func applyEnvironmentOverrides(config *Config, lookup environmentLookup) error {
 		{"MAIL_OUTBOX_RETRY_BASE", &config.OutboxRetryBase},
 		{"MAIL_OUTBOX_RETRY_CAP", &config.OutboxRetryCap},
 		{"MAIL_PROVIDER_TIMEOUT", &config.Worker.ProviderTimeout},
+		{"MAIL_PROVIDER_CIRCUIT_OPEN_DURATION", &config.ProviderResilience.Circuit.OpenDuration},
 		{"MAIL_FINALIZE_TIMEOUT", &config.Worker.FinalizeTimeout},
 		{"MAIL_DELIVERY_RETRY_BASE", &config.DeliveryRetryBase},
 		{"MAIL_DELIVERY_RETRY_CAP", &config.DeliveryRetryCap},
@@ -508,6 +509,7 @@ func applyEnvironmentOverrides(config *Config, lookup environmentLookup) error {
 		{"MAIL_LIFECYCLE_CONSUMER_PREFETCH", &config.LifecycleConsumer.PrefetchPerLane},
 		{"MAIL_PROVIDER_MAX_CONCURRENT", &config.ProviderResilience.MaxConcurrent},
 		{"MAIL_PROVIDER_RATE_BURST", &config.ProviderResilience.Burst},
+		{"MAIL_PROVIDER_CIRCUIT_FAILURE_THRESHOLD", &config.ProviderResilience.Circuit.FailureThreshold},
 	}
 	for _, field := range uint32s {
 		if err := overrideUint32(lookup, field.name, field.target); err != nil {

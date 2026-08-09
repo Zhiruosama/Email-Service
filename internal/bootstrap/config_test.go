@@ -15,28 +15,30 @@ const (
 func TestLoadConfigDefaultsAndOverrides(t *testing.T) {
 	t.Parallel()
 	environment := map[string]string{
-		"DATABASE_URL":                        "postgres://mail:secret@localhost:5432/mail?sslmode=disable",
-		"RABBITMQ_URL":                        "amqp://mail:secret@localhost:5672/",
-		"MAIL_PROVIDER":                       "fake",
-		"MAIL_INSTANCE_ID":                    "worker-a",
-		"MAIL_GRPC_LISTEN_ADDRESS":            "127.0.0.1:9090",
-		"MAIL_DATABASE_MAX_CONNS":             "32",
-		"MAIL_SCHEDULER_BATCH_SIZE":           "64",
-		"MAIL_RELAY_PUBLISH_CONCURRENCY":      "4",
-		"MAIL_CONSUMER_LANES":                 "6",
-		"MAIL_LIFECYCLE_CONSUMER_LANES":       "3",
-		"MAIL_PROVIDER_TIMEOUT":               "12s",
-		"MAIL_PROVIDER_MAX_CONCURRENT":        "3",
-		"MAIL_PROVIDER_RATE_PER_SECOND":       "2.5",
-		"MAIL_PROVIDER_RATE_BURST":            "4",
-		"MAIL_CALLBACK_TIMEOUT":               "4s",
-		"MAIL_GRPC_ALLOW_INSECURE":            "true",
-		"MAIL_DEV_TENANT_ID":                  "10000000-0000-4000-8000-000000000001",
-		"MAIL_CALLBACK_GRPC_ADDRESS":          "127.0.0.1:9091",
-		"MAIL_CALLBACK_GRPC_ALLOW_INSECURE":   "true",
-		"MAIL_PAYLOAD_KEY_ID":                 "dev-key-1",
-		"MAIL_PAYLOAD_ENCRYPTION_KEY_BASE64":  testEncryptionKeyBase64,
-		"MAIL_PAYLOAD_FINGERPRINT_KEY_BASE64": testFingerprintKeyBase64,
+		"DATABASE_URL":                            "postgres://mail:secret@localhost:5432/mail?sslmode=disable",
+		"RABBITMQ_URL":                            "amqp://mail:secret@localhost:5672/",
+		"MAIL_PROVIDER":                           "fake",
+		"MAIL_INSTANCE_ID":                        "worker-a",
+		"MAIL_GRPC_LISTEN_ADDRESS":                "127.0.0.1:9090",
+		"MAIL_DATABASE_MAX_CONNS":                 "32",
+		"MAIL_SCHEDULER_BATCH_SIZE":               "64",
+		"MAIL_RELAY_PUBLISH_CONCURRENCY":          "4",
+		"MAIL_CONSUMER_LANES":                     "6",
+		"MAIL_LIFECYCLE_CONSUMER_LANES":           "3",
+		"MAIL_PROVIDER_TIMEOUT":                   "12s",
+		"MAIL_PROVIDER_MAX_CONCURRENT":            "3",
+		"MAIL_PROVIDER_RATE_PER_SECOND":           "2.5",
+		"MAIL_PROVIDER_RATE_BURST":                "4",
+		"MAIL_PROVIDER_CIRCUIT_FAILURE_THRESHOLD": "7",
+		"MAIL_PROVIDER_CIRCUIT_OPEN_DURATION":     "45s",
+		"MAIL_CALLBACK_TIMEOUT":                   "4s",
+		"MAIL_GRPC_ALLOW_INSECURE":                "true",
+		"MAIL_DEV_TENANT_ID":                      "10000000-0000-4000-8000-000000000001",
+		"MAIL_CALLBACK_GRPC_ADDRESS":              "127.0.0.1:9091",
+		"MAIL_CALLBACK_GRPC_ALLOW_INSECURE":       "true",
+		"MAIL_PAYLOAD_KEY_ID":                     "dev-key-1",
+		"MAIL_PAYLOAD_ENCRYPTION_KEY_BASE64":      testEncryptionKeyBase64,
+		"MAIL_PAYLOAD_FINGERPRINT_KEY_BASE64":     testFingerprintKeyBase64,
 	}
 	config, err := loadConfig(mapLookup(environment), "ignored-host")
 	if err != nil {
@@ -56,7 +58,9 @@ func TestLoadConfigDefaultsAndOverrides(t *testing.T) {
 	}
 	if config.ProviderResilience.MaxConcurrent != 3 ||
 		config.ProviderResilience.RatePerSecond != 2.5 ||
-		config.ProviderResilience.Burst != 4 {
+		config.ProviderResilience.Burst != 4 ||
+		config.ProviderResilience.Circuit.FailureThreshold != 7 ||
+		config.ProviderResilience.Circuit.OpenDuration != 45*time.Second {
 		t.Fatalf("provider resilience overrides = %#v", config.ProviderResilience)
 	}
 	if config.NotificationWorker.CallbackTimeout != 4*time.Second ||
@@ -114,6 +118,9 @@ func TestConfigRejectsInvalidOverrides(t *testing.T) {
 		{name: "provider rate syntax", key: "MAIL_PROVIDER_RATE_PER_SECOND", value: "fast"},
 		{name: "provider rate finite", key: "MAIL_PROVIDER_RATE_PER_SECOND", value: "NaN"},
 		{name: "provider burst", key: "MAIL_PROVIDER_RATE_BURST", value: "0"},
+		{name: "circuit threshold", key: "MAIL_PROVIDER_CIRCUIT_FAILURE_THRESHOLD", value: "0"},
+		{name: "circuit duration syntax", key: "MAIL_PROVIDER_CIRCUIT_OPEN_DURATION", value: "later"},
+		{name: "circuit duration range", key: "MAIL_PROVIDER_CIRCUIT_OPEN_DURATION", value: "10ms"},
 		{name: "unsupported provider", key: "MAIL_PROVIDER", value: "unsupported"},
 		{name: "unsafe instance", key: "MAIL_INSTANCE_ID", value: "bad/id"},
 		{name: "pool bounds", key: "MAIL_DATABASE_MIN_CONNS", value: "100"},

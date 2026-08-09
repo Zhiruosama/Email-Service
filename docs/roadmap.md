@@ -74,7 +74,7 @@
 - 已完成：双重显式授权的 QQ SMTP smoke test；
 - 已完成：单实例 Provider Token Bucket 限速；
 - 已完成：非阻塞 Provider 并发舱壁；
-- Provider 熔断器；
+- 已完成：本地 Provider `CLOSED/OPEN/HALF_OPEN` 熔断器；
 - Retry Scheduler；
 - DLQ 和安全重放；
 - 终态敏感 payload 清理。

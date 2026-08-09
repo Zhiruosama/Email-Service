@@ -202,6 +202,26 @@ CLOSED → OPEN → HALF_OPEN → CLOSED
 - 半开探测使用独立小并发舱壁；
 - 多实例首先允许本地快速熔断，关键状态通过共享存储或控制面广播。
 
+09-B2 已实现第一版本地熔断器。默认连续 5 次基础设施故障后打开 30 秒；冷却时间不是由后台
+定时器驱动，而是在下一次调用时惰性进入 `HALF_OPEN`。半开阶段只允许一个探针，其余调用返回
+`PROVIDER_UNAVAILABLE/LOCAL_PROVIDER_CIRCUIT_OPEN` 且可重试。探针成功进入 `CLOSED`，失败则从
+探针完成时间重新计算开放窗口。
+
+计数规则：
+
+| Provider 结果 | 熔断动作 |
+| --- | --- |
+| `ACCEPTED` | 清零连续故障 |
+| `AUTHENTICATION` | 不等待阈值，立即打开 |
+| `RATE_LIMITED/PROVIDER_UNAVAILABLE/NETWORK/TIMEOUT_BEFORE_SEND` | 累加连续故障 |
+| `SUBMISSION_UNKNOWN` | 累加健康故障，但当前邮件仍保持不确定语义 |
+| `VALIDATION/RECIPIENT_REJECTED/CONTENT_REJECTED` | 证明 Provider 有明确响应，清零连续基础设施故障 |
+| `INTERNAL` 或非法 Provider 结果 | 不改变外部依赖健康统计 |
+
+熔断器使用 epoch 作为内存 fencing token：进入新状态轮次时 epoch 递增，上一轮尚未完成的调用即使
+随后成功，也不能把已经打开的熔断器错误关闭。当前隔离粒度是本进程唯一 SMTP endpoint/credential；
+多凭据 Router 接入后必须为每个路由键创建独立状态，不能共享一个全局熔断器。
+
 ### 6.2 舱壁
 
 至少隔离：

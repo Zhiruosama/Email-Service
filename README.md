@@ -34,7 +34,9 @@ implicit TLS、AUTH LOGIN、Envelope、MIME DATA 和最终接受响应均已验�
 接受，不等同于系统可自动证明最终进入收件箱。本次测试邮件已由人工确认出现在普通收件箱，
 中文发件名称、Subject 和正文显示正常。09-B1 又在 SMTP 外层接入了非阻塞并发舱壁和本地
 Token Bucket：过载请求不会堆在进程内，而是返回稳定、可重试的失败并回到持久化调度链路。
-下一阶段进入 09-B2 Provider 熔断器。
+09-B2 又完成本地 Provider 熔断器：连续基础设施故障达到阈值后进入 `OPEN`，冷却到期只放行
+一个 `HALF_OPEN` 探针，成功恢复、失败重新打开；认证失败会立即熔断。下一阶段进入 Provider
+可观测性与恢复运维能力。
 
 ## 设计文档
 
@@ -143,7 +145,9 @@ Manual ACK、延迟重试、DLQ，以及 Broker 应用重启后的客户端重�
 只有把 `MAIL_PROVIDER` 改为 `smtp` 时，进程才会要求并使用 `.env.example` 中的
 `MAIL_SMTP_*` 配置。`MAIL_PROVIDER_MAX_CONCURRENT`、`MAIL_PROVIDER_RATE_PER_SECOND` 和
 `MAIL_PROVIDER_RATE_BURST` 分别控制单实例 SMTP 并发、持续速率和短时突发；它们是本地保护，
-不是多实例共享配额。SMTP Adapter 采用按需连接，应用启动不会连接或发送邮件。真实 smoke test
+不是多实例共享配额。`MAIL_PROVIDER_CIRCUIT_FAILURE_THRESHOLD` 和
+`MAIL_PROVIDER_CIRCUIT_OPEN_DURATION` 控制本地熔断阈值与冷却时间。SMTP Adapter 采用按需连接，
+应用启动不会连接或发送邮件。真实 smoke test
 还受到 build tag 和环境开关双重保护：必须主动导出本地 `.env`，把
 `MAIL_SMTP_REAL_TEST_ENABLED` 改为 `true`，再执行 `make test-smtp-real`。普通 `make test`、
 `make test-integration` 和 `make run` 不会触发这个测试。授权码不得提交到 Git。

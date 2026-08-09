@@ -186,7 +186,7 @@ Redis/控制面等共享协调方案，同时评估共享组件故障时的降�
 
 ## 10. 尚未解决
 
-- 09-B2 的 `CLOSED/OPEN/HALF_OPEN` 熔断器；
+- `CLOSED/OPEN/HALF_OPEN` 熔断器已在 [09-B2](09b2-provider-circuit-breaker.md) 完成；
 - provider/endpoint/credential 维度的动态隔离键；
 - 限流与拒绝 Metrics、Trace 和告警；
 - 严格多实例全局配额；

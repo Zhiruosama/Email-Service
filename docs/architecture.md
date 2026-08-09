@@ -146,7 +146,11 @@ Composition Root 可显式选择 Fake 或 SMTP；SMTP Adapter 通过 implicit TL
 `SUBMISSION_UNKNOWN`。Provider 采用按需连接且不参与启动 readiness。09-B1 已在 SMTP Adapter
 外层接入 Resilience Guard：先非阻塞获取并发舱壁，再消费本地 Token Bucket；任一步拒绝都转换为
 可重试 `RATE_LIMITED`，由现有数据库重试链路重新调度，而不是在进程内增加第二条等待队列。
-连接复用、熔断和 Provider Router 仍待后续阶段接入。
+09-B2 又在同一 Guard 内接入本地 `CLOSED/OPEN/HALF_OPEN` 熔断器：熔断检查发生在舱壁和令牌
+之前，开放期间不会消耗本地容量；半开只允许一个探针；并用 epoch 拒绝旧在途调用对新状态的
+过期回写。当前进程只有一组 SMTP endpoint/credential，因此一个 Guard 就对应这一隔离单元；
+未来 Provider Router 必须为不同 endpoint/credential 分别持有 Guard。连接复用和 Provider Router
+仍待后续阶段接入。
 
 09-A2B 已通过双重显式授权的真实 QQ SMTP smoke test，验证 `smtp.qq.com:465` implicit TLS、
 AUTH LOGIN、单收件人 Envelope、multipart MIME DATA 和最终成功响应。该结果只将 Message 推进
