@@ -88,7 +88,7 @@ MAIL_PROVIDER=fake
 2. 设置 min/max connections、connect timeout、lifetime、idle time 和 lifetime jitter；
 3. `Ping` PostgreSQL；
 4. 使用 `to_regclass` 确认 `tenants`、`mail_messages`、`outbox_events`、
-   `delivery_attempts` 四张表都存在，并确认 Goose schema version 至少为 2。
+   `delivery_attempts` 四张表都存在，并确认 Goose schema version 至少为 3。
 
 数据库可以 Ping 但 migration 未执行时，服务拒绝启动。这避免 Scheduler/Relay 启动后不停
 报告“relation does not exist”，同时 readiness 却错误显示健康。
@@ -312,12 +312,12 @@ Scheduler/Relay 的 `SKIP LOCKED` 和 Outbox lease、Consumer 的 competing cons
 
 - Submission、Query、Cancel gRPC handler 尚未注册；当前 gRPC 仅提供 Health；
 - lifecycle 状态事件的通知 Consumer 与 AI-Nexus 联调；
-- 真实 SMTP、模板/收件人密文、MIME 渲染；
+- 真实 SMTP、Payload 解密、模板渲染与 MIME；
 - TLS/mTLS、认证授权和密钥管理；
 - OpenTelemetry Metrics/Trace 与运行告警；
 - 全局数据库/Provider 故障的暂停消费与熔断控制；
 - DLQ 管理、安全重放和陈旧 Attempt Reconciler；
 - `--role` 分角色启动，目前固定运行后台投递链路的 `all` 形态。
 
-下一步进入 08-A：实现 Submission/Query 应用用例与 gRPC Adapter，把当前后台投递链路开放
-给第一个真实调用方，而不是继续依赖测试直接写数据库。
+下一步进入 08-A1：先实现可靠受理用例与安全 Payload 持久化，再由 08-A2 接入 gRPC，
+把当前后台投递链路开放给第一个真实调用方，而不是继续依赖测试直接写数据库。

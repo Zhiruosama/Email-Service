@@ -16,7 +16,9 @@ Scheduler、Outbox Relay 的 Lease/Fencing，以及带 mandatory、Publisher Con
 Queue 和按需重连的 RabbitMQ Publisher Adapter；Dispatch Worker、Delivery Attempt、
 Fake Provider，以及带 Manual ACK、prefetch、延迟重试、DLQ、重连和优雅停机的 RabbitMQ
 Consumer Adapter 也已完成。Composition Root 已将这些组件装配为可运行后台进程，并提供
-动态 gRPC liveness/readiness。下一阶段为 Submission/Query 应用用例与 gRPC Adapter。
+动态 gRPC liveness/readiness。可靠受理应用内核也已完成：模板版本固定、规范化 Payload
+HMAC 幂等指纹、AES-GCM 加密，以及 Message + Submission + Outbox 同事务持久化。下一阶段
+为 Submission/Query gRPC Adapter 与租户身份边界。
 
 ## 设计文档
 

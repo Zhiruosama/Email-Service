@@ -150,3 +150,25 @@ Provider、Endpoint/Region 和 Credential 隔离熔断状态。
 
 Dead Letter Queue。处理超过重试上限或遇到 poison message 的任务进入死信，供告警、
 诊断和受约束的人工重放，不能静默丢弃。
+
+## Canonical Payload
+
+把语义相同但表示形式可能不同的请求转换成稳定字节序列，例如邮箱域名小写、locale 规范化、
+UTC 时间和 JSON key 稳定排序。幂等指纹必须基于规范化结果，否则同一业务请求可能被误判为
+冲突。
+
+## HMAC Fingerprint
+
+使用服务端秘密 key 对规范化 Payload 计算的确定性摘要。本项目用它区分“同 key 原样重试”
+和“同 key 更换 Payload”。与普通 SHA-256 相比，HMAC 能防止攻击者对邮箱、验证码等低熵
+数据离线枚举。
+
+## AES-GCM
+
+同时提供机密性与完整性的认证加密模式。每次加密必须使用唯一随机 nonce；AAD 不加密但参与
+完整性认证。本项目把 `tenant_id/message_id` 作为 AAD，防止密文被跨任务搬移后仍可解密。
+
+## Encryption at Rest
+
+数据落到持久化介质前加密。本项目只在数据库明文保存安全查询所需的模板标识和脱敏邮箱，
+原始邮箱、display name 与模板变量保存在 AES-GCM 密文中；密钥不进入业务数据库。

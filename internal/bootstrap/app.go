@@ -249,7 +249,7 @@ SELECT
 	if err := pool.QueryRow(ctx, query).Scan(&complete, &version); err != nil {
 		return err
 	}
-	if !complete || version < 2 {
+	if !complete || version < 3 {
 		return errors.New("required schema is missing")
 	}
 	return nil

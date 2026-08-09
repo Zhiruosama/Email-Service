@@ -17,6 +17,7 @@ func createArguments(record ports.MessageRecord) ([]any, error) {
 		return nil, err
 	}
 	failureCategory, failureCode, failureRetryable := failureArguments(snapshot.LastFailure)
+	submission := submissionArguments(record.Submission)
 
 	return []any{
 		snapshot.ID,
@@ -42,7 +43,42 @@ func createArguments(record ports.MessageRecord) ([]any, error) {
 		failureRetryable,
 		snapshot.AcceptedAt,
 		snapshot.UpdatedAt,
+		submission.senderIdentityKey,
+		submission.templateKey,
+		submission.templateVersion,
+		submission.locale,
+		submission.recipientMasked,
+		submission.payloadKeyID,
+		submission.encryptedPayload,
+		submission.metadata,
 	}, nil
+}
+
+type persistedSubmission struct {
+	senderIdentityKey any
+	templateKey       any
+	templateVersion   any
+	locale            any
+	recipientMasked   any
+	payloadKeyID      any
+	encryptedPayload  any
+	metadata          any
+}
+
+func submissionArguments(details *ports.SubmissionDetails) persistedSubmission {
+	if details == nil {
+		return persistedSubmission{}
+	}
+	return persistedSubmission{
+		senderIdentityKey: details.SenderIdentityKey,
+		templateKey:       details.TemplateKey,
+		templateVersion:   int32(details.TemplateVersion),
+		locale:            details.Locale,
+		recipientMasked:   details.RecipientMasked,
+		payloadKeyID:      details.PayloadKeyID,
+		encryptedPayload:  details.EncryptedPayload,
+		metadata:          details.Metadata,
+	}
 }
 
 func updateArguments(snapshot message.Snapshot) ([]any, error) {
@@ -149,6 +185,14 @@ func scanMessageRecord(row rowScanner, trailingDestinations ...any) (ports.Messa
 		lastErrorRetryable  pgtype.Bool
 		acceptedAt          time.Time
 		updatedAt           time.Time
+		senderIdentityKey   pgtype.Text
+		templateKey         pgtype.Text
+		templateVersion     pgtype.Int4
+		locale              pgtype.Text
+		recipientMasked     pgtype.Text
+		payloadKeyID        pgtype.Text
+		encryptedPayload    []byte
+		submissionMetadata  []byte
 	)
 
 	destinations := []any{
@@ -175,6 +219,14 @@ func scanMessageRecord(row rowScanner, trailingDestinations ...any) (ports.Messa
 		&lastErrorRetryable,
 		&acceptedAt,
 		&updatedAt,
+		&senderIdentityKey,
+		&templateKey,
+		&templateVersion,
+		&locale,
+		&recipientMasked,
+		&payloadKeyID,
+		&encryptedPayload,
+		&submissionMetadata,
 	}
 	destinations = append(destinations, trailingDestinations...)
 	if err := row.Scan(destinations...); err != nil {
@@ -224,11 +276,57 @@ func scanMessageRecord(row rowScanner, trailingDestinations ...any) (ports.Messa
 		DuplicateRiskPolicy: ports.DuplicateRiskPolicy(duplicateRiskPolicy),
 		Message:             aggregate,
 	}
+	submission, err := scanSubmission(
+		senderIdentityKey,
+		templateKey,
+		templateVersion,
+		locale,
+		recipientMasked,
+		payloadKeyID,
+		encryptedPayload,
+		submissionMetadata,
+	)
+	if err != nil {
+		return ports.MessageRecord{}, err
+	}
+	record.Submission = submission
 	copy(record.PayloadFingerprint[:], fingerprint)
 	if err := record.Validate(); err != nil {
 		return ports.MessageRecord{}, corruptRecordError("persisted metadata is invalid", err)
 	}
 	return record, nil
+}
+
+func scanSubmission(
+	senderIdentityKey, templateKey pgtype.Text,
+	templateVersion pgtype.Int4,
+	locale, recipientMasked, payloadKeyID pgtype.Text,
+	encryptedPayload, metadata []byte,
+) (*ports.SubmissionDetails, error) {
+	present := senderIdentityKey.Valid || templateKey.Valid || templateVersion.Valid || locale.Valid ||
+		recipientMasked.Valid || payloadKeyID.Valid || encryptedPayload != nil || metadata != nil
+	if !present {
+		return nil, nil
+	}
+	if !senderIdentityKey.Valid || !templateKey.Valid || !templateVersion.Valid ||
+		!locale.Valid || !recipientMasked.Valid || !payloadKeyID.Valid ||
+		encryptedPayload == nil || metadata == nil || templateVersion.Int32 <= 0 {
+		return nil, corruptRecordError("submission fields are only partially present", nil)
+	}
+	details := &ports.SubmissionDetails{
+		SenderIdentityKey: senderIdentityKey.String,
+		TemplateKey:       templateKey.String,
+		TemplateVersion:   uint32(templateVersion.Int32),
+		Locale:            locale.String,
+		RecipientMasked:   recipientMasked.String,
+		PayloadKeyID:      payloadKeyID.String,
+		EncryptedPayload:  append([]byte(nil), encryptedPayload...),
+		Metadata:          append([]byte(nil), metadata...),
+	}
+	if err := details.Validate(); err != nil {
+		return nil, corruptRecordError("persisted submission is invalid", err)
+	}
+	return details, nil
 }
 
 func scanFailure(category, code pgtype.Text, retryable pgtype.Bool) (*message.Failure, error) {

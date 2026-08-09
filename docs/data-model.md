@@ -166,9 +166,14 @@ unique (tenant_id, idempotency_key)
 `version = version + 1`。影响 0 行表示调用方持有旧 Snapshot，必须重新读取并重新执行
 状态机，不能直接覆盖当前状态。Scheduler 的批量领取才使用行锁，两者职责不同。
 
-04-A Migration 先实现租户、幂等身份和状态机快照字段。收件地址、模板变量、路由和
-Provider 配置需要先完成加密与控制面模型，将通过后续 Migration 增加，当前不会以
-明文占位。
+08-A1 的 Migration 3 已增加第一版不可变 Submission 快照：`sender_identity_key`、
+`template_key/version`、`locale`、`recipient_masked`、`payload_key_id`、
+`encrypted_payload` 和非敏感 `submission_metadata`。原始邮箱、display name 与模板变量被
+组合成规范化 Payload 后使用 AES-GCM 加密；RabbitMQ Outbox 不复制密文或敏感内容。
+
+设计稿中的独立 sender/template 外键、recipient fingerprint、路由版本和终态清理仍需控制面
+完成后补充。当前列允许整组为空以兼容 08-A1 之前的底层测试记录，新 Submission 用例只创建
+完整字段组。
 
 ### 3.5 `delivery_attempts`
 
