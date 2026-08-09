@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	deliveryapp "github.com/Zhiruosama/Email-Service/internal/application/delivery"
@@ -28,7 +29,13 @@ type Consumer struct {
 	config    Config
 	processor DispatchProcessor
 	dial      connectionFactory
+	ready     atomic.Bool
 }
+
+// Ready reports whether the current connection has declared topology and
+// started all configured consumer lanes. It becomes false between reconnects
+// and during shutdown.
+func (c *Consumer) Ready() bool { return c.ready.Load() }
 
 func New(config Config, processor DispatchProcessor) (*Consumer, error) {
 	return newConsumer(config, processor, dialAMQP)
@@ -55,6 +62,8 @@ func newConsumer(
 // stops new deliveries, gives active handlers ShutdownTimeout to finish their
 // bounded finalization, and only then closes the AMQP connection.
 func (c *Consumer) Run(ctx context.Context) error {
+	c.ready.Store(false)
+	defer c.ready.Store(false)
 	var reconnectAttempt uint32
 	for {
 		if err := ctx.Err(); err != nil {
@@ -119,6 +128,8 @@ func (c *Consumer) runSession(ctx context.Context, connection brokerConnection) 
 		lanes.Wait()
 		close(allLanesDone)
 	}()
+	c.ready.Store(true)
+	defer c.ready.Store(false)
 
 	connectionClosed := connection.NotifyClose(make(chan *amqp.Error, 1))
 	var sessionErr error

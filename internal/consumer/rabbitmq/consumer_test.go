@@ -199,12 +199,16 @@ func TestRunSessionCreatesIndependentLaneChannelsAndStopsGracefully(t *testing.T
 	go func() { result <- consumer.runSession(ctx, connection) }()
 
 	deadline := time.Now().Add(time.Second)
-	for connection.openCount() != 4 && time.Now().Before(deadline) {
+	for (connection.openCount() != 4 || !consumer.Ready()) && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}
 	if connection.openCount() != 4 {
 		cancel()
 		t.Fatalf("opened channels = %d, want topology + 3 lanes", connection.openCount())
+	}
+	if !consumer.Ready() {
+		cancel()
+		t.Fatal("consumer was not ready after topology and lanes started")
 	}
 	cancel()
 	select {
@@ -226,6 +230,9 @@ func TestRunSessionCreatesIndependentLaneChannelsAndStopsGracefully(t *testing.T
 	}
 	if !connection.wasClosed() {
 		t.Fatal("AMQP connection was not closed after all lanes stopped")
+	}
+	if consumer.Ready() {
+		t.Fatal("consumer remained ready after session shutdown")
 	}
 }
 

@@ -15,7 +15,8 @@ Repository 与 version 乐观锁、Message + Transactional Outbox 原子持久�
 Scheduler、Outbox Relay 的 Lease/Fencing，以及带 mandatory、Publisher Confirm、Quorum
 Queue 和按需重连的 RabbitMQ Publisher Adapter；Dispatch Worker、Delivery Attempt、
 Fake Provider，以及带 Manual ACK、prefetch、延迟重试、DLQ、重连和优雅停机的 RabbitMQ
-Consumer Adapter 也已完成。下一阶段为进程级依赖装配与运行时健康状态。
+Consumer Adapter 也已完成。Composition Root 已将这些组件装配为可运行后台进程，并提供
+动态 gRPC liveness/readiness。下一阶段为 Submission/Query 应用用例与 gRPC Adapter。
 
 ## 设计文档
 
@@ -70,6 +71,18 @@ make infra-up
 make migrate-up
 make migrate-status
 ```
+
+启动后台投递进程：
+
+```bash
+set -a
+. ./.env
+set +a
+make run
+```
+
+当前必须显式配置 `MAIL_PROVIDER=fake`；它用于验证投递编排，不会真实发送邮件。服务启动时
+只验证 Migration 是否完整，不会由应用副本自动修改 Schema。
 
 也可以只启动或停止其中一个组件：
 

@@ -43,6 +43,28 @@ Mail Service 内部的后台角色，扫描已到 `scheduled_at` 或 `next_attem
 消费 RabbitMQ 命令、读取 Message、检查状态和 generation、创建 Attempt，并调用
 Provider 的执行角色。
 
+## Composition Root
+
+程序中唯一知道全部具体实现并负责依赖组装的位置。本项目由 `internal/bootstrap.NewApp`
+创建 PostgreSQL、RabbitMQ、Scheduler、Relay、Worker 和 Provider；领域/应用层不读取环境
+变量，也不依赖具体 SDK。
+
+## Supervisor
+
+管理多个长期运行组件的生命周期。组件意外退出时取消 peers，正常关机时按阶段停止并设置
+总超时，避免进程处于“端口还活着但核心 goroutine 已死”的半失效状态。
+
+## Liveness 与 Readiness
+
+Liveness 回答“进程是否仍在运行”，失败通常意味着应重启；Readiness 回答“当前是否应接收
+流量”，依赖暂时不可用时可以变为 NOT_SERVING 而不立即杀进程。本项目 Worker readiness
+要求 PostgreSQL 可达且 RabbitMQ Consumer lanes 已就绪。
+
+## Graceful Shutdown
+
+收到 SIGTERM 后先撤销 readiness，再停止产生新工作，等待有界在途处理，最后关闭网络和
+数据库资源。超过总时限时返回失败并由外部编排系统终止，不能无限阻塞发布。
+
 ## `FOR UPDATE SKIP LOCKED`
 
 `FOR UPDATE` 锁住当前事务领取的行；`SKIP LOCKED` 让其他实例跳过已锁行继续领取剩余

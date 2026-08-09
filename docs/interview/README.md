@@ -24,8 +24,9 @@ Mail Service 从零到可上线的每一个开发阶段。
 | 06-C | RabbitMQ Publisher Adapter | 已完成 | [RabbitMQ Publisher](06c-rabbitmq-publisher.md) |
 | 07-A | Worker 核心、Delivery Attempt 与 Fake Provider | 已完成 | [Worker 核心](07a-dispatch-worker-core.md) |
 | 07-B | RabbitMQ Consumer、Manual ACK 与 DLQ | 已完成 | [RabbitMQ Consumer](07b-rabbitmq-consumer.md) |
-| 07-C | Composition Root、进程生命周期与健康检查 | 未开始 | 完成后新增 |
-| 08 | 状态通知与 AI-Nexus 联调 | 未开始 | 完成后新增 |
+| 07-C | Composition Root、进程生命周期与健康检查 | 已完成 | [运行时装配](07c-composition-root-runtime.md) |
+| 08-A | Submission/Query gRPC Adapter | 未开始 | 完成后新增 |
+| 08-B | 状态通知与 AI-Nexus 联调 | 未开始 | 完成后新增 |
 | 09 | SMTP Provider、重试与熔断 | 未开始 | 完成后新增 |
 | 10 | 多租户、模板和生产化 | 未开始 | 完成后新增 |
 
@@ -43,7 +44,8 @@ Mail Service 从零到可上线的每一个开发阶段。
 10. [RabbitMQ Publisher Adapter](06c-rabbitmq-publisher.md)
 11. [Worker 核心、Delivery Attempt 与 Fake Provider](07a-dispatch-worker-core.md)
 12. [RabbitMQ Consumer、Manual ACK 与 DLQ](07b-rabbitmq-consumer.md)
-13. [核心术语速查](glossary.md)
+13. [Composition Root、进程生命周期与健康检查](07c-composition-root-runtime.md)
+14. [核心术语速查](glossary.md)
 
 ## 每阶段固定记录结构
 

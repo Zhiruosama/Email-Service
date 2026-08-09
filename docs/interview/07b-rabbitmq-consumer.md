@@ -276,9 +276,10 @@ at-least-once dead-letter worker 依赖目标 confirm。目标已收下但 confi
 不合适。当前有界 delayed retry 防止 hot loop，但全局依赖故障应由下一阶段的健康状态、
 熔断/暂停消费和告警处理，避免把整条队列都变成 delayed messages。
 
-## 14. 尚未解决
+## 14. 后续进展与尚未解决
 
-- `cmd/mail-service` 的完整依赖装配、角色启动和 readiness；
+- `cmd/mail-service` 的依赖装配、进程生命周期与动态 readiness 已在
+  [07-C 运行时装配](07c-composition-root-runtime.md) 完成；分角色启动仍未实现；
 - 指标、Trace、结构化日志和连接状态健康检查；
 - 全局数据库/Provider 故障时暂停消费的熔断逻辑；
 - DLQ 查询、告警、审计和安全重放工具；
@@ -286,5 +287,5 @@ at-least-once dead-letter worker 依赖目标 confirm。目标已收下但 confi
 - lifecycle Consumer 与 AI-Nexus 状态通知；
 - 真实 SMTP Provider、租户限速和 Provider 舱壁。
 
-下一阶段先完成进程级 Composition Root 和生命周期装配，才能把现有 API/Scheduler/Relay/
-Consumer 作为一个可运行服务统一启动、停止和暴露健康状态。
+下一阶段 08-A 会实现 Submission/Query 应用用例与 gRPC Adapter，让业务方能够通过正式
+接口创建并查询邮件任务。

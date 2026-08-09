@@ -13,9 +13,11 @@ PROTO_FILES := $(shell find $(PROTO_DIR) -type f -name '*.proto' | sort)
 PROTOC_GEN_GO := $(shell $(GO) tool -n protoc-gen-go)
 PROTOC_GEN_GO_GRPC := $(shell $(GO) tool -n protoc-gen-go-grpc)
 
-.PHONY: help generate buf-generate proto-check proto-format-check proto-lint format test test-integration check check-all infra-up infra-down infra-status db-up db-down db-status mq-up mq-down mq-status mq-policy-apply mq-policy-status migrate-up migrate-down migrate-status migrate-validate
+.PHONY: help build run generate buf-generate proto-check proto-format-check proto-lint format test test-integration check check-all infra-up infra-down infra-status db-up db-down db-status mq-up mq-down mq-status mq-policy-apply mq-policy-status migrate-up migrate-down migrate-status migrate-validate
 
 help:
+	@echo "build        Build the mail-service binary"
+	@echo "run          Run mail-service using the exported environment"
 	@echo "generate     Generate Go protobuf and gRPC bindings"
 	@echo "buf-generate Generate bindings through pinned Buf"
 	@echo "proto-check  Compile protobuf schemas without generating code"
@@ -41,6 +43,13 @@ help:
 	@echo "migrate-down Roll back one PostgreSQL migration"
 	@echo "migrate-status Show PostgreSQL migration status"
 	@echo "migrate-validate Validate migration file ordering and annotations"
+
+build:
+	@mkdir -p bin
+	$(GO) build -o bin/mail-service ./cmd/mail-service
+
+run:
+	$(GO) run ./cmd/mail-service
 
 generate:
 	@mkdir -p $(GEN_DIR)
